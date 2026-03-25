@@ -8,12 +8,23 @@ from .models import (
 )
 
 
+class TransactionTypeMixin:
+    def transaction_type(self, obj):
+        """Достаем человекочитаемое название типа из связанной модели"""
+        try:
+            return obj.metadata_info.get_type_display()
+        except TransactionMetadata.DoesNotExist:
+            return "—"
+    transaction_type.short_description = "Тип"
+    transaction_type.admin_order_field = 'metadata_info__type'
+
+
 # --- ИНЛАЙНЫ ---
 
-class TransactionInline(admin.TabularInline):
+class TransactionInline(admin.TabularInline, TransactionTypeMixin):
     """Инлайн для отображения транзакций в карточке пользователя"""
     model = Transaction
-    readonly_fields = ('amount_stars', 'amount_fiat', 'status', 'created_at', 'updated_at')
+    readonly_fields = ('amount_stars', 'amount_fiat', 'status', 'transaction_type', 'created_at', 'updated_at')
     show_change_link = True
     can_delete = False
     ordering = ('-created_at',)
@@ -42,8 +53,9 @@ class TelegramUserAdmin(admin.ModelAdmin):
 
 
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'telegram_user', 'amount_stars', 'amount_fiat', 'status', 'created_at', 'updated_at')
+class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
+    list_display = ('id', 'telegram_user', 'amount_stars', 'amount_fiat', 'status',
+                    'transaction_type', 'created_at', 'updated_at')
     list_filter = ('status', ('created_at', admin.DateFieldListFilter), ('updated_at', admin.DateFieldListFilter))
     search_fields = ('telegram_user__username', 'telegram_user__telegram_id')
     search_help_text = 'Поиск по имени пользователя или ID'

@@ -7,7 +7,7 @@ from core.domain.enums import TransactionStatus
 from core.schemas.payment import PaymentDTO
 from core.services.star_service import StarService
 
-from core.integrations.fragment import FragmentAPI
+from core.integrations.fragment import FragmentClient
 
 
 class PaymentService:
@@ -16,12 +16,12 @@ class PaymentService:
             trans_repo: TransactionRepository,
             settings_repo: SettingsRepository,
             star_service: StarService,
-            fragment_api: FragmentAPI
+            fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
         self._settings_repo = settings_repo
         self._star_service = star_service
-        self._fragment_api = fragment_api
+        self._fragment_client = fragment_client
 
     async def create_checkout(
             self,
@@ -73,7 +73,7 @@ class PaymentService:
         # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
         transaction = await self._trans_repo.get_by_external_id(external_id)
         if transaction and transaction.status == TransactionStatus.PENDING:
-            is_send_success, payload = await self._fragment_api.send_stars(
+            is_send_success, payload = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )
 

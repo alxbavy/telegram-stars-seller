@@ -3,7 +3,8 @@ from decimal import Decimal
 from core.repositories.trans_repo import TransactionRepository
 from core.repositories.settings_repo import SettingsRepository
 
-from core.schemas.payment import PaymentDTO, TransactionStatus
+from core.domain.enums import TransactionStatus
+from core.schemas.payment import PaymentDTO
 from core.services.star_service import StarService
 
 from core.integrations.fragment import FragmentAPI
@@ -71,7 +72,7 @@ class PaymentService:
         # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
         # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
         transaction = await self._trans_repo.get_by_external_id(external_id)
-        if transaction and transaction.status == "PENDING":
+        if transaction and transaction.status == TransactionStatus.PENDING:
             is_send_success, payload = await self._fragment_api.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )

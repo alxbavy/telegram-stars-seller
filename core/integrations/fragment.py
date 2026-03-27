@@ -1,75 +1,131 @@
-import os
-import requests
+from typing import Any
+from urllib.parse import urljoin
+
+import httpx
 import logging
+
+from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
 
-class FragmentAPI:
+
+class FragmentAPIError(Exception):
+    """Базовая ошибка клиента Fragment API."""
+
+
+class FragmentClient:
+    AUTH_PATH = "auth/authenticate/"
+    SEND_STARS_PATH = "order/stars/"
+
     def __init__(self):
-        self.url = os.getenv("FRAGMENT_API_URL")
-        if not self.url:
-            logger.error("FRAGMENT_API_URL не указан, перевод звёзд невозможен.")
-            return
-        # TODO: возможно пересмотреть поведение при ошибке
-        self.token = None
-        self.authenticate_fragment()
+        self.url = getattr(settings, "FRAGMENT_API_URL", None)
+        self.api_key = getattr(settings, "FRAGMENT_API_KEY", None)
+        self.mnemonics = getattr(settings, "FRAGMENT_MNEMONICS", None)
+        self.phone = getattr(settings, "FRAGMENT_PHONE", None)
+        self.wallet_version = getattr(settings, "TON_WALLET_VERSION", None)
 
-    def authenticate_fragment(self):
-        env_vars = ["FRAGMENT_MNEMONICS", "FRAGMENT_API_KEY", "FRAGMENT_PHONE", "TON_WALLET_VERSION"]
-        fragment_mnemonics = os.getenv(env_vars[0])
-        fragment_api_key = os.getenv(env_vars[1])
-        fragment_phone = os.getenv(env_vars[2])
-        wallet_version = os.getenv(env_vars[3]) # TODO: узнать версию TON-кошелька у заказчиков
-        fail = False
-        for i, var in enumerate([fragment_mnemonics, fragment_api_key, fragment_phone, wallet_version]):
-            if not var:
-                logger.error(f"{env_vars[i]} не установлен. Аутентификация невозможна.")
-                fail = True
-        # TODO: возможно пересмотреть поведение при ошибке
-        if fail:
-            return
+        if not all([self.url, self.api_key, self.mnemonics, self.phone, self.wallet_version]):
+            logger.error("FragmentAPI не сконфигурирован.")
+            raise ValueError("FragmentAPI is not configured properly")
+
+        self.token: str | None = None
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def send_stars(self, username: str, amount_stars: int) -> dict[str, Any]:
+        if not username or not username.strip():
+            raise ValueError("username must not be empty")
+        if amount_stars <= 0:
+            raise ValueError("amount_stars must be positive")
+
+        await self._ensure_authenticated()
+
+        payload = {
+            "username": username,
+            "quantity": amount_stars,
+            "show_sender": False
+        }
+
+        return await self._send_stars_request(payload)
+
+    async def _send_stars_request(self, payload: dict[str, Any], retry_on_401: bool=True) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"JWT {self.token}",
+            "Content-Type": "application/json"
+        }
 
         try:
-            mnemonics_list = fragment_mnemonics.strip().split()
-            payload = {
-                "api_key": fragment_api_key,
-                "phone_number": fragment_phone,
-                "mnemonics": mnemonics_list,
-                "version": wallet_version
-            }
-            res = requests.post(f"{self.url}/auth/authenticate/", json=payload)
-            if res.status_code == 200:
-                self.token = res.json().get("token")
-                return
-            logger.error(f"Ошибка авторизации Fragment: {res.text}")
+            response = await self._client.post(
+                urljoin(self.url, self.SEND_STARS_PATH),
+                json=payload,
+                headers=headers,
+                timeout=30.0
+            )
+        except httpx.TimeoutException as exc:
+            raise FragmentAPIError("Timeout while sending stars") from exc
+        except httpx.HTTPError as exc:
+            raise FragmentAPIError(f"HTTP error while sending stars: {exc}") from exc
+
+        if response.status_code == 200:
+            return response.json()
+
+        if response.status_code == 401 and retry_on_401:
+            logger.debug("Токен Fragment истек, обновляем и пробуем снова...")
+            self.token = None
+            await self._ensure_authenticated()
+            return await self._send_stars_request(payload, retry_on_401=False)
+
+        logger.error(f"Не удалось отправить звёзды: {response.text}")
+        raise FragmentAPIError(
+            f"Failed to send stars: status={response.status_code}, body={response.text}"
+        )
+
+    async def _ensure_authenticated(self) -> None:
+        if self.token:
             return
 
-        except Exception:
-            logger.exception(f"Исключение при авторизации Fragment:")
-            return
+        await self._authenticate_fragment()
 
+        if not self.token:
+            raise FragmentAPIError("Authentication failed")
 
-    async def send_stars(self, username: str, amount_stars: str):
+    async def _authenticate_fragment(self) -> None:
+        if not self.mnemonics:
+            logger.error("Аутентификация невозможна: отсутствуют мнемоники.")
+            raise FragmentAPIError("Mnemonics are missing")
+
+        payload = {
+            "api_key": self.api_key,
+            "phone_number": self.phone,
+            "mnemonics": self.mnemonics.strip().split(),
+            "version": self.wallet_version
+        }
+
         try:
-            data = {
-                "username": username,
-                "quantity": amount_stars,
-                "show_sender": "false"
-            }
-            headers = {
-                "Authorization": f"JWT {self.token}",
-                "Content-Type": "application/json"
-            }
+            res = await self._client.post(
+                urljoin(self.url, self.AUTH_PATH),
+                json=payload,
+                timeout=15.0
+            )
+        except httpx.TimeoutException as exc:
+            logger.exception("Исключение при авторизации Fragment")
+            raise FragmentAPIError("Timeout during authentication") from exc
+        except httpx.HTTPError as exc:
+            logger.exception("Исключение при авторизации Fragment")
+            raise FragmentAPIError(f"HTTP error during authentication: {exc}") from exc
 
-            res = requests.post(f"{self.url}/order/stars/", json=data, headers=headers)
-            is_send_success = False
-            if res.status_code == 200:
-                is_send_success = True
-            else:
-                logger.error(f"Не удалось отправить звёзды: {res.text}")
-            return is_send_success, res.text
+        if res.status_code != 200:
+            logger.error("Ошибка авторизации Fragment: %s - %s", res.status_code, res.text)
+            raise FragmentAPIError(
+                f"Authentication failed: status={res.status_code}, body={res.text}"
+            )
 
-        except Exception as e:
-            logger.exception(f"Исключение при отправке:")
-            return False, dict({"error": str(e)})
+        token = res.json().get("token")
+        if not token:
+            raise FragmentAPIError("Authentication succeeded but token is missing")
+
+        self.token = token
+        logger.debug("Успешная авторизация во Fragment API.")

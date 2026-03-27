@@ -37,7 +37,7 @@ class PaymentService:
         order_id = str(uuid.uuid4())
         transaction = self._trans_repo.create_transaction(
             user_id=user_id,
-            external_id=order_id,
+            transaction_id=order_id,
             amount_fiat=amount,
             amount_stars=stars_count,
             payment_method=method,
@@ -59,11 +59,11 @@ class PaymentService:
         """
         return f"https://test.link/pay/{order_id}?amount={amount}"
 
-    async def confirm_payment(self, external_id: str):
+    async def confirm_payment(self, transaction_id: str):
         """
         Вызывается при получении Вебхука от платежки.
         """
-        transaction = self._trans_repo.get_by_external_id(external_id)
+        transaction = self._trans_repo.get_by_transaction_id(transaction_id)
         if transaction and transaction.status == "PENDING":
             self._trans_repo.update_status(transaction.id, "SUCCESS")
 

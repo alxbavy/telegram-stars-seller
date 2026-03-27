@@ -57,8 +57,8 @@ class TelegramUserAdmin(admin.ModelAdmin):
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
-    list_display = ('id', 'telegram_user', 'amount_stars', 'amount_fiat', 'status',
-                    'transaction_type', 'created_at', 'updated_at')
+    list_display = ('id', 'telegram_user', 'amount_stars', 'amount_fiat', 'target_username',
+                    'status', 'transaction_type', 'created_at', 'updated_at')
     list_filter = ('status', ('created_at', admin.DateFieldListFilter), ('updated_at', admin.DateFieldListFilter))
     search_fields = ('telegram_user__username', 'telegram_user__telegram_id')
     search_help_text = 'Поиск по имени пользователя или ID'

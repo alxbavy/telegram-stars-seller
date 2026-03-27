@@ -1,10 +1,13 @@
 from django.contrib import admin
 from django.utils import timezone
 from django.utils.formats import localize
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
 from solo.admin import SingletonModelAdmin
 from .models import (
     TelegramUser, Transaction, TransactionMetadata,
-    PaymentMethod, GlobalSettings, ExchangeRate
+    PaymentMethod, GlobalSettings, ExchangeRate,
+    MonthlyProfit
 )
 
 
@@ -85,3 +88,39 @@ class GlobalSettingsAdmin(SingletonModelAdmin):
 
 
     last_usd_rate_update_display.short_description = "Дата последнего обновления курса"
+
+
+@admin.register(MonthlyProfit)
+class MonthlyProfitAdmin(admin.ModelAdmin):
+    # Кастомный шаблон
+    change_list_template = 'admin/monthly_profit_report.html'
+
+    def changelist_view(self, request, extra_context=None):
+        # 1. Берем только успешные транзакции
+        # 2. Группируем (TruncMonth) по месяцу создания
+        # 3. Суммируем поле amount_fiat
+        monthly_stats = (
+            Transaction.objects.filter(status='SUCCESS')
+            .annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(total_profit=Sum('amount_fiat'))
+            .order_by('-month')
+        )
+
+        total_all_time = (
+            Transaction.objects
+            .filter(status='SUCCESS')
+            .aggregate(Sum('amount_fiat'))['amount_fiat__sum'] or 0
+        )
+
+        extra_context = extra_context or {}
+        extra_context['title'] = 'Отчет по прибыли по месяцам'
+        extra_context['monthly_stats'] = monthly_stats
+        extra_context['total_all_time'] = total_all_time
+
+        return super().changelist_view(request, extra_context=extra_context)
+
+    # Запрещаем любые действия, кроме просмотра
+    def has_add_permission(self, request): return False
+    def has_delete_permission(self, request, obj=None): return False
+    def has_change_permission(self, request, obj=None): return False

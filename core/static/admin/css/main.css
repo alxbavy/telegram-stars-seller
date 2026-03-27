@@ -1,0 +1,82 @@
+/* ==========================================================================
+   SETTINGS (Переменные)
+   ========================================================================== */
+:root {
+    --profit-bg: var(--body-bg, #fff);
+    --profit-border-color: var(--border-color, #eee);
+    --profit-primary: var(--primary, #79aec8);
+    --profit-text: var(--body-fg, #333);
+    --profit-hover: var(--selected-row, #f5f5f5);
+    --profit-font: var(--font-family-primary, sans-serif);
+    --profit-total-text: #26a69a;
+    --profit-shadow: rgba(0, 0, 0, 0.05);
+}
+
+/* ==========================================================================
+   GENERIC (Сброс стилей, box-sizing)
+   ========================================================================== */
+.profit-report {
+    border-collapse: collapse;
+}
+
+/* ==========================================================================
+   OBJECTS (Структурные блоки, обертки)
+   ========================================================================== */
+.report-wrapper {
+    display: inline-block;
+    margin: 10px 0;
+    background: var(--profit-bg);
+    border: 1px solid var(--profit-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 4px var(--profit-shadow);
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   COMPONENTS (Основной блок - Profit Report)
+   ========================================================================== */
+
+.profit-report {
+    width: auto;
+    min-width: 350px;
+    font-family: var(--profit-font);
+}
+
+.profit-report__cell {
+    padding: 10px 25px;
+    border-bottom: 1px solid var(--profit-border-color);
+    white-space: nowrap;
+    color: var(--profit-text);
+    text-align: left;
+}
+
+.profit-report__cell--header {
+    background: var(--profit-primary);
+    color: #fff;
+    padding: 12px 25px;
+    font-weight: 600;
+    border-bottom: none;
+}
+
+.profit-report__cell--empty {
+    text-align: center;
+    padding: 20px;
+}
+
+.profit-report__row {
+    transition: background-color 0.2s ease;
+}
+
+.profit-report__row:hover {
+    background-color: var(--profit-hover);
+}
+
+.profit-report__row--total {
+    background: var(--darkened-bg, #f8f8f8);
+    font-weight: bold;
+}
+
+.profit-report__row--total .profit-report__cell {
+    border-top: 2px solid var(--profit-border-color);
+    color: var(--profit-total-text);
+}

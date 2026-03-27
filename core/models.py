@@ -62,6 +62,13 @@ class TransactionMetadata(models.Model):
         verbose_name_plural = "Метаданные транзакций"
 
 
+class MonthlyProfit(Transaction):
+    class Meta:
+        proxy = True
+        verbose_name = 'Прибыль по месяцам'
+        verbose_name_plural = 'Прибыль по месяцам'
+
+
 class PaymentMethod(models.Model):
     name = models.CharField(max_length=100, verbose_name="Название системы")
     commission_percent = models.DecimalField(

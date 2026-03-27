@@ -25,13 +25,13 @@ class Transaction(models.Model):
     telegram_user = models.ForeignKey(
         TelegramUser,
         on_delete=models.CASCADE,
-        related_name='transactions',
+        related_name="transactions",
         verbose_name="Покупатель"
     )
     amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
     amount_stars = models.IntegerField(verbose_name="Количество звезд")
     target_username = models.CharField(max_length=255, null=True, blank=True, verbose_name="Кому")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', verbose_name="Статус")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING", verbose_name="Статус")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
@@ -51,13 +51,13 @@ class Transaction(models.Model):
 
 class TransactionMetadata(models.Model):
     TYPES_CHOICES =[
-        ('PURCHASE', 'Покупка'),
+        ("PURCHASE", "Покупка"),
     ]
 
     transaction = models.OneToOneField(
         Transaction,
         on_delete=models.CASCADE,
-        related_name='metadata_info',
+        related_name="metadata_info",
         verbose_name="Транзакция"
     )
     type = models.CharField(max_length=50, choices=TYPES_CHOICES, verbose_name="Тип")
@@ -72,8 +72,8 @@ class TransactionMetadata(models.Model):
 class MonthlyProfit(Transaction):
     class Meta:
         proxy = True
-        verbose_name = 'Прибыль по месяцам'
-        verbose_name_plural = 'Прибыль по месяцам'
+        verbose_name = "Прибыль по месяцам"
+        verbose_name_plural = "Прибыль по месяцам"
 
 
 class PaymentMethod(models.Model):

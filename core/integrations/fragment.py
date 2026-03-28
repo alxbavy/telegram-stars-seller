@@ -19,11 +19,11 @@ class FragmentClient:
     SEND_STARS_PATH = "order/stars/"
 
     def __init__(self):
-        self.url = getattr(settings, "FRAGMENT_API_URL", None)
-        self.api_key = getattr(settings, "FRAGMENT_API_KEY", None)
-        self.mnemonics = getattr(settings, "FRAGMENT_MNEMONICS", None)
-        self.phone = getattr(settings, "FRAGMENT_PHONE", None)
-        self.wallet_version = getattr(settings, "TON_WALLET_VERSION", None)
+        self.url: str | None = getattr(settings, "FRAGMENT_API_URL", None)
+        self.api_key: str | None = getattr(settings, "FRAGMENT_API_KEY", None)
+        self.mnemonics: str | None = getattr(settings, "FRAGMENT_MNEMONICS", None)
+        self.phone: str | None = getattr(settings, "FRAGMENT_PHONE", None)
+        self.wallet_version: str | None = getattr(settings, "TON_WALLET_VERSION", None)
 
         if not all([self.url, self.api_key, self.mnemonics, self.phone, self.wallet_version]):
             logger.error("FragmentAPI не сконфигурирован.")
@@ -105,7 +105,7 @@ class FragmentClient:
         }
 
         try:
-            res = await self._client.post(
+            response = await self._client.post(
                 urljoin(self.url, self.AUTH_PATH),
                 json=payload,
                 timeout=15.0
@@ -117,13 +117,13 @@ class FragmentClient:
             logger.exception("Исключение при авторизации Fragment")
             raise FragmentAPIError(f"HTTP error during authentication: {exc}") from exc
 
-        if res.status_code != 200:
-            logger.error("Ошибка авторизации Fragment: %s - %s", res.status_code, res.text)
+        if response.status_code != 200:
+            logger.error(f"Ошибка авторизации Fragment: {response.status_code} - {response.text}")
             raise FragmentAPIError(
-                f"Authentication failed: status={res.status_code}, body={res.text}"
+                f"Authentication failed: status={response.status_code}, body={response.text}"
             )
 
-        token = res.json().get("token")
+        token = response.json().get("token")
         if not token:
             raise FragmentAPIError("Authentication succeeded but token is missing")
 

@@ -1,6 +1,8 @@
 from django.db import models
 from solo.models import SingletonModel
 
+import uuid
+
 
 class TelegramUser(models.Model):
     objects = models.Manager()
@@ -26,6 +28,7 @@ class Transaction(models.Model):
         ('FAILED', 'ОШИБКА'),
     ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True, editable=False, verbose_name="ID платежа")
     telegram_user = models.ForeignKey(
         TelegramUser,
         on_delete=models.CASCADE,

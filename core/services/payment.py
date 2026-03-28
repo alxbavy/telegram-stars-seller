@@ -3,8 +3,10 @@ from decimal import Decimal
 from core.repositories.trans_repo import TransactionRepository
 from core.repositories.settings_repo import SettingsRepository
 
+from core.domain.enums import TransactionStatus
 from core.schemas.payment import PaymentDTO
 from core.services.star_service import StarService
+from core.integrations.fragment import FragmentClient
 
 
 class PaymentService:
@@ -12,11 +14,13 @@ class PaymentService:
             self,
             trans_repo: TransactionRepository,
             settings_repo: SettingsRepository,
-            star_service: StarService
+            star_service: StarService,
+            fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
         self._settings_repo = settings_repo
         self._star_service = star_service
+        self._fragment_client = fragment_client
 
     async def create_checkout(
             self,
@@ -63,11 +67,22 @@ class PaymentService:
         """
         Вызывается при получении Вебхука от платежки.
         """
-        transaction = self._trans_repo.get_by_transaction_id(transaction_id)
-        if transaction and transaction.status == "PENDING":
-            self._trans_repo.update_status(transaction.id, "SUCCESS")
+        # TODO: Должно вызываться не только при получении Вебхука от платежки,
+        # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
+        # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
+        transaction = await self._trans_repo.get_by_external_id(transaction_id)
+        if transaction and transaction.status == TransactionStatus.PENDING:
+            is_send_success, payload = await self._fragment_client.send_stars(
+                transaction.telegram_user.username, transaction.amount_stars
+            )
 
-            # TODO: Логика начисления звёзд
+            if is_send_success:
+                new_transaction_status = TransactionStatus.SUCCESS
+            else:
+                new_transaction_status = TransactionStatus.FAILED
+                await self._trans_repo.update_metadata(transaction, payload)
+            await self._trans_repo.update_status(transaction, new_transaction_status)
 
             return transaction
+
         return None

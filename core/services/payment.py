@@ -6,7 +6,6 @@ from core.repositories.settings_repo import SettingsRepository
 from core.domain.enums import TransactionStatus
 from core.schemas.payment import PaymentDTO
 from core.services.star_service import StarService
-
 from core.integrations.fragment import FragmentClient
 
 
@@ -42,7 +41,7 @@ class PaymentService:
         order_id = str(uuid.uuid4())
         transaction = self._trans_repo.create_transaction(
             user_id=user_id,
-            external_id=order_id,
+            transaction_id=order_id,
             amount_fiat=amount,
             amount_stars=stars_count,
             payment_method=method,
@@ -64,14 +63,14 @@ class PaymentService:
         """
         return f"https://test.link/pay/{order_id}?amount={amount}"
 
-    async def confirm_payment(self, external_id: str):
+    async def confirm_payment(self, transaction_id: str):
         """
         Вызывается при получении Вебхука от платежки.
         """
         # TODO: Должно вызываться не только при получении Вебхука от платежки,
         # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
         # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
-        transaction = await self._trans_repo.get_by_external_id(external_id)
+        transaction = await self._trans_repo.get_by_external_id(transaction_id)
         if transaction and transaction.status == TransactionStatus.PENDING:
             is_send_success, payload = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars

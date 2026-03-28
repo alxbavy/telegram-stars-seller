@@ -3,6 +3,8 @@ from solo.models import SingletonModel
 
 
 class TelegramUser(models.Model):
+    objects = models.Manager()
+
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, verbose_name="Username")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
@@ -16,6 +18,8 @@ class TelegramUser(models.Model):
 
 
 class Transaction(models.Model):
+    objects = models.Manager()
+
     STATUS_CHOICES = [
         ('PENDING', 'ОЖИДАЕТ'),
         ('SUCCESS', 'УСПЕШНО'),
@@ -43,6 +47,8 @@ class Transaction(models.Model):
 
 
 class TransactionMetadata(models.Model):
+    objects = models.Manager()
+
     TYPES_CHOICES =[
         ('PURCHASE', 'Покупка'),
     ]
@@ -70,6 +76,8 @@ class MonthlyProfit(Transaction):
 
 
 class PaymentMethod(models.Model):
+    objects = models.Manager()
+
     name = models.CharField(max_length=100, verbose_name="Название системы")
     commission_percent = models.DecimalField(
         max_digits=5,
@@ -88,6 +96,8 @@ class PaymentMethod(models.Model):
 
 
 class GlobalSettings(SingletonModel):
+    objects = models.Manager()
+
     star_base_cost = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -117,6 +127,8 @@ class GlobalSettings(SingletonModel):
 
 
 class ExchangeRate(SingletonModel):
+    objects = models.Manager()
+
     usd_rate = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -133,6 +145,8 @@ class ExchangeRate(SingletonModel):
 
 
 class BotState(models.Model):
+    objects = models.Manager()
+
     user_id = models.BigIntegerField(unique=True)
     data = models.JSONField(default=dict)
     state = models.TextField(null=True)

@@ -1,7 +1,7 @@
-import uuid
 from decimal import Decimal
 
 from core.repositories.transaction_repository import TransactionRepository
+from core.repositories.user_repository import UserRepository
 from core.repositories.settings_repo import SettingsRepository
 
 from core.domain.enums import TransactionStatus
@@ -14,11 +14,13 @@ class PaymentService:
     def __init__(
             self,
             trans_repo: TransactionRepository,
+            user_repo: UserRepository,
             settings_repo: SettingsRepository,
             star_service: StarService,
             fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
+        self._user_repo = user_repo
         self._settings_repo = settings_repo
         self._star_service = star_service
         self._fragment_client = fragment_client
@@ -39,8 +41,9 @@ class PaymentService:
 
         amount = await self._star_service.get_order_price(stars_count, method)
 
+        user_buyer = await self._user_repo.get_by_id(user_id)
         transaction = await self._trans_repo.create_transaction(
-            user_id=user_id,
+            user=user_buyer,
             amount_fiat=amount,
             amount_stars=stars_count,
             payment_method=method,

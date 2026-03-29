@@ -1,5 +1,5 @@
 from core.repositories.user_repo import UserRepository
-from core.repositories.trans_repo import TransactionRepository
+from core.repositories.transaction_repository import TransactionRepository
 
 class UserService:
     def __init__(self, user_repo: UserRepository, trans_repo: TransactionRepository):
@@ -8,7 +8,7 @@ class UserService:
 
     async def get_profile_data(self, user_id: int):
         user = await self.user_repo.get_or_create(user_id)
-        stats = await self.trans_repo.get_user_stats(user_id)
+        stats = await self.trans_repo.get_user_stats(user)
         return UserProfileDTO()
 
         {

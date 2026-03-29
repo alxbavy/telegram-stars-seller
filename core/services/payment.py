@@ -41,7 +41,7 @@ class PaymentService:
 
         amount = await self._star_service.get_order_price(stars_count, method)
 
-        user_buyer = await self._user_repo.get_by_id(user_id)
+        user_buyer = await self._user_repo.get_by_telegram_id(user_id)
         transaction = await self._trans_repo.create_transaction(
             user=user_buyer,
             amount_fiat=amount,

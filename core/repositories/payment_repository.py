@@ -3,7 +3,7 @@ from decimal import Decimal
 from asgiref.sync import sync_to_async
 
 from core.models import GlobalSettings, ExchangeRate, PaymentMethod
-from core.schemas.payment import PricingDTO
+from core.schemas.payment_schemas import PricingDTO
 
 
 class PaymentRepository:

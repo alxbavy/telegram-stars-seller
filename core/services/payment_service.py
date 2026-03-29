@@ -4,7 +4,7 @@ from core.repositories.trans_repo import TransactionRepository
 from core.repositories.payment_repository import PaymentRepository
 
 from core.domain.enums import TransactionStatus
-from core.schemas.payment import PaymentDTO
+from core.schemas.payment_schemas import PaymentDTO
 from core.services.star_service import StarService
 from core.integrations.fragment import FragmentClient
 

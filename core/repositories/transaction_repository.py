@@ -1,10 +1,9 @@
 import uuid
-from typing import Optional
 
 from django.db import transaction
 from asgiref.sync import sync_to_async
 
-from core.domain.enums import TransactionStatus
+from core.domain.enums import TransactionStatus, TransactionType
 from core.models import TelegramUser, Transaction, TransactionMetadata
 
 
@@ -13,18 +12,26 @@ class TransactionRepository:
     @sync_to_async(thread_sensitive=True)
     def create_transaction(
             self,
-            user_id: int,
+            user: TelegramUser,
             amount_fiat: float,
             amount_stars: int,
             payment_method: str,
             target_username: str = None,
             status: str = TransactionStatus.PENDING,
-            transaction_type: str = "PURCHASE"
+            transaction_type: str = TransactionType.PURCHASE,
+            json_payload: dict = None
     ) -> Transaction:
+        """
+        Raises:
+            IntegrityError - если при создании transaction.id UUID будет неуникальным (создание UUID происходит
+            автоматически с помощью UUIDField от Django и стандартного модуля uuid, так что
+            это описание для осведомленности)
+        """
+        if json_payload is None:
+            json_payload = {}
+
         # SQL-транзакция
         with transaction.atomic():
-            user = TelegramUser.objects.get(telegram_id=user_id)
-            
             new_transaction = Transaction.objects.create(
                 telegram_user=user,
                 amount_fiat=amount_fiat,
@@ -32,18 +39,16 @@ class TransactionRepository:
                 status=status,
                 target_username=target_username
             )
-
             TransactionMetadata.objects.create(
                 transaction=new_transaction,
                 type=transaction_type,
                 payment_method=payment_method,
-                payload={}
+                payload=json_payload
             )
-
             return new_transaction
 
     @sync_to_async(thread_sensitive=True)
-    def get_by_transaction_id(self, transaction_id: str | uuid.UUID) -> Optional[Transaction]:
+    def get_by_transaction_id(self, transaction_id: str | uuid.UUID) -> Transaction | None:
         """select_related подтягивает метаданные сразу, чтобы потом не было лишних SQL-запросов"""
         return Transaction.objects.select_related("metadata_info").filter(transaction_id=transaction_id).first()
 
@@ -67,8 +72,11 @@ class TransactionRepository:
 
     @sync_to_async(thread_sensitive=True)
     def update_payload(self, transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
-        # metadata_info будет получен только в случае, если transaction_obj был получен через get_by_transaction_id
-        # TODO: надо проверить получение metadata_info
+        """
+        Если transaction_obj был получен не с помощью get_by_transaction_id(...),
+        будет сгенерирован дополнительный запрос на получение объекта метаданных,
+        так что данную функцию лучше не использовать в цикле с неполными транзакциями.
+        """
         metadata = transaction_obj.metadata_info
 
         metadata.payload.update(new_payload)

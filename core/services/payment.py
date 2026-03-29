@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
-from core.repositories.trans_repo import TransactionRepository
+
+from core.repositories.transaction_repository import TransactionRepository
 from core.repositories.settings_repo import SettingsRepository
 
 from core.domain.enums import TransactionStatus
@@ -38,18 +39,15 @@ class PaymentService:
 
         amount = await self._star_service.get_order_price(stars_count, method)
 
-        order_id = str(uuid.uuid4())
-        transaction = self._trans_repo.create_transaction(
+        transaction = await self._trans_repo.create_transaction(
             user_id=user_id,
-            transaction_id=order_id,
             amount_fiat=amount,
             amount_stars=stars_count,
             payment_method=method,
-            target_username=target_username,
-            status="PENDING"
+            target_username=target_username
         )
 
-        pay_url = await self._get_provider_link(order_id, amount, method)
+        pay_url = await self._get_provider_link(transaction.id, amount, method)
 
         return PaymentDTO(
             transaction_id=transaction.id,
@@ -70,7 +68,7 @@ class PaymentService:
         # TODO: Должно вызываться не только при получении Вебхука от платежки,
         # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
         # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
-        transaction = await self._trans_repo.get_by_external_id(transaction_id)
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_id)
         if transaction and transaction.status == TransactionStatus.PENDING:
             is_send_success, payload = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
@@ -80,7 +78,7 @@ class PaymentService:
                 new_transaction_status = TransactionStatus.SUCCESS
             else:
                 new_transaction_status = TransactionStatus.FAILED
-                await self._trans_repo.update_metadata(transaction, payload)
+                await self._trans_repo.update_payload(transaction, payload)
             await self._trans_repo.update_status(transaction, new_transaction_status)
 
             return transaction

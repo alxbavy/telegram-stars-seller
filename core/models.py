@@ -23,9 +23,9 @@ class Transaction(models.Model):
     objects = models.Manager()
 
     STATUS_CHOICES = [
-        ('PENDING', 'ОЖИДАЕТ'),
-        ('SUCCESS', 'УСПЕШНО'),
-        ('FAILED', 'ОШИБКА'),
+        ("PENDING", "ОЖИДАЕТ"),
+        ("SUCCESS", "УСПЕШНО"),
+        ("FAILED", "ОШИБКА"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True, editable=False, verbose_name="ID платежа")

@@ -44,10 +44,13 @@ class TransactionRepository:
             )
             return new_transaction
 
-    @sync_to_async(thread_sensitive=True)
-    def get_by_transaction_id(self, transaction_id: str | uuid.UUID) -> Transaction | None:
-        """select_related подтягивает метаданные сразу, чтобы потом не было лишних SQL-запросов"""
-        return Transaction.objects.select_related("metadata_info").filter(transaction_id=transaction_id).first()
+    async def get_by_transaction_id(self, transaction_id: str | uuid.UUID) -> Transaction | None:
+        return await (
+            Transaction.objects
+            .select_related("metadata_info")
+            .filter(id=transaction_id)
+            .afirst()
+        )
 
     @sync_to_async(thread_sensitive=True)
     def get_many_by_username(self, username: str) -> list[Transaction]:
@@ -80,11 +83,16 @@ class TransactionRepository:
         metadata.save(update_fields=["payload"])
         return metadata
 
-    @sync_to_async(thread_sensitive=True)
-    def get_user_stats(self, user: TelegramUser) -> dict[str, int]:
-        total_stars = Transaction.objects.filter(telegram_user=user).aggregate(Sum("amount_stars"))["amount_stars__sum"]
-        orders_count = Transaction.objects.filter(telegram_user=user).count()
+    async def get_user_stats(self, user: TelegramUser) -> dict[str, int]:
+        total_stars = (
+            await Transaction.objects
+            .filter(telegram_user=user)
+            .aaggregate(Sum("amount_stars"))
+        )["amount_stars__sum"] or 0
+
+        orders_count = await Transaction.objects.filter(telegram_user=user).acount()
+
         return {
-            "total_stars": total_stars if total_stars is not None else 0,
+            "total_stars": total_stars,
             "orders_count": orders_count,
         }

@@ -9,9 +9,9 @@ from core.models import TelegramUser, Transaction, TransactionMetadata
 
 
 class TransactionRepository:
+    @staticmethod
     @sync_to_async(thread_sensitive=True)
     def create_transaction(
-            self,
             user: TelegramUser,
             amount_fiat: float,
             amount_stars: int,
@@ -44,7 +44,8 @@ class TransactionRepository:
             )
             return new_transaction
 
-    async def get_by_transaction_id(self, transaction_id: str | uuid.UUID) -> Transaction | None:
+    @staticmethod
+    async def get_by_transaction_id(transaction_id: str | uuid.UUID) -> Transaction | None:
         return await (
             Transaction.objects
             .select_related("metadata_info")
@@ -52,23 +53,27 @@ class TransactionRepository:
             .afirst()
         )
 
-    async def get_many_by_username(self, username: str) -> list[Transaction]:
+    @staticmethod
+    async def get_many_by_username(username: str) -> list[Transaction]:
         return [
             t async for t in Transaction.objects.filter(telegram_user__username=username).order_by("-created_at")
         ]
 
     # TODO: можно объединить под один get_many(username = None, telegram_id = None), если не будет дополнительной логики
-    async def get_many_by_telegram_id(self, telegram_id: int) -> list[Transaction]:
+    @staticmethod
+    async def get_many_by_telegram_id(telegram_id: int) -> list[Transaction]:
         return [
             t async for t in Transaction.objects.filter(telegram_user__telegram_id=telegram_id).order_by("-created_at")
         ]
 
-    async def update_status(self, transaction_obj: Transaction, new_status: str) -> Transaction:
+    @staticmethod
+    async def update_status(transaction_obj: Transaction, new_status: str) -> Transaction:
         transaction_obj.status = new_status
         await transaction_obj.asave(update_fields=["status"])
         return transaction_obj
 
-    async def update_payload(self, transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
+    @staticmethod
+    async def update_payload(transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
         """
         Если transaction_obj был получен не с помощью get_by_transaction_id(...),
         будет сгенерирован дополнительный запрос на получение объекта метаданных,
@@ -80,7 +85,8 @@ class TransactionRepository:
         await metadata.asave(update_fields=["payload"])
         return metadata
 
-    async def get_user_stats(self, user: TelegramUser) -> dict[str, int]:
+    @staticmethod
+    async def get_user_stats(user: TelegramUser) -> dict[str, int]:
         total_stars = (
             await Transaction.objects
             .filter(telegram_user=user)

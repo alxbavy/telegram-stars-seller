@@ -9,7 +9,6 @@ from core.models import TelegramUser, Transaction, TransactionMetadata
 
 
 class TransactionRepository:
-
     @sync_to_async(thread_sensitive=True)
     def create_transaction(
             self,
@@ -24,14 +23,11 @@ class TransactionRepository:
     ) -> Transaction:
         """
         Raises:
-            IntegrityError - если при создании transaction.id UUID будет неуникальным (создание UUID происходит
-            автоматически с помощью UUIDField от Django и стандартного модуля uuid, так что
-            это описание для осведомленности)
+            IntegrityError - если при создании transaction.id UUID будет неуникальным.
         """
         if json_payload is None:
             json_payload = {}
 
-        # SQL-транзакция
         with transaction.atomic():
             new_transaction = Transaction.objects.create(
                 telegram_user=user,

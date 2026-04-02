@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from core.repositories.transaction_repository import TransactionRepository
+from core.repositories.transaction import TransactionRepository
 from core.repositories.user_repository import UserRepository
 from core.repositories.settings_repo import SettingsRepository
 

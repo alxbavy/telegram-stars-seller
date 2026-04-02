@@ -1,5 +1,5 @@
 from core.repositories.user_repo import UserRepository
-from core.repositories.transaction_repository import TransactionRepository
+from core.repositories.transaction import TransactionRepository
 
 class UserService:
     def __init__(self, user_repo: UserRepository, trans_repo: TransactionRepository):

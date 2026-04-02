@@ -52,26 +52,23 @@ class TransactionRepository:
             .afirst()
         )
 
-    @sync_to_async(thread_sensitive=True)
-    def get_many_by_username(self, username: str) -> list[Transaction]:
-        # Оборачиваем в list(), чтобы Django ВЫПОЛНИЛ запрос прямо сейчас.
-        # Если вернуть ленивый QuerySet, он попытается выполниться в асинхронном коде и упадет с ошибкой.
-        qs = Transaction.objects.filter(telegram_user__username=username).order_by("-created_at")
-        return list(qs)
+    async def get_many_by_username(self, username: str) -> list[Transaction]:
+        return [
+            t async for t in Transaction.objects.filter(telegram_user__username=username).order_by("-created_at")
+        ]
 
-    @sync_to_async(thread_sensitive=True)
-    def get_many_by_telegram_id(self, telegram_id: int) -> list[Transaction]:
-        qs = Transaction.objects.filter(telegram_user__telegram_id=telegram_id).order_by("-created_at")
-        return list(qs)
+    # TODO: можно объединить под один get_many(username = None, telegram_id = None), если не будет дополнительной логики
+    async def get_many_by_telegram_id(self, telegram_id: int) -> list[Transaction]:
+        return [
+            t async for t in Transaction.objects.filter(telegram_user__telegram_id=telegram_id).order_by("-created_at")
+        ]
 
-    @sync_to_async(thread_sensitive=True)
-    def update_status(self, transaction_obj: Transaction, new_status: str) -> Transaction:
+    async def update_status(self, transaction_obj: Transaction, new_status: str) -> Transaction:
         transaction_obj.status = new_status
-        transaction_obj.save(update_fields=["status"])
+        await transaction_obj.asave(update_fields=["status"])
         return transaction_obj
 
-    @sync_to_async(thread_sensitive=True)
-    def update_payload(self, transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
+    async def update_payload(self, transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
         """
         Если transaction_obj был получен не с помощью get_by_transaction_id(...),
         будет сгенерирован дополнительный запрос на получение объекта метаданных,
@@ -80,7 +77,7 @@ class TransactionRepository:
         metadata = transaction_obj.metadata_info
 
         metadata.payload.update(new_payload)
-        metadata.save(update_fields=["payload"])
+        await metadata.asave(update_fields=["payload"])
         return metadata
 
     async def get_user_stats(self, user: TelegramUser) -> dict[str, int]:

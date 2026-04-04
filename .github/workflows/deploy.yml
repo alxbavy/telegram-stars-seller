@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "/root/bot_project"
+          rm: true
+
+      - name: Execute SSH commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/telegram-stars-seller
+            echo "${{ secrets.ENV_FILE }}" > .env
+            docker compose down
+            docker compose up -d --build
+            sleep 5
+            docker compose exec -T web python manage.py migrate
+            docker compose exec -T web python manage.py collectstatic --noinput
+            
+            echo "Деплой успешно завершен"

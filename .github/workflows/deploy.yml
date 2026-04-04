@@ -30,7 +30,7 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /root/bot_project
+            cd /root/telegram-stars-seller
             echo "${{ secrets.ENV_FILE }}" > .env
             docker compose down
             docker compose up -d --build

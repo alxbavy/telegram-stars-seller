@@ -1,0 +1,45 @@
+{% extends "admin/change_list.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'admin/css/main.css' %}">
+{% endblock %}
+
+{% block content %}
+    <div id="content-main">
+        <div class="report-wrapper">
+            <table class="profit-report">
+                <thead class="profit-report__head">
+                    <tr class="profit-report__row">
+                        <th class="profit-report__cell profit-report__cell--header">Месяц</th>
+                        <th class="profit-report__cell profit-report__cell--header">Прибыль (₽)</th>
+                    </tr>
+                </thead>
+                <tbody class="profit-report__body">
+                    {% for entry in monthly_stats %}
+                        <tr class="profit-report__row">
+                            <td class="profit-report__cell">{{ entry.month|date:"F Y" }}</td>
+                            <td class="profit-report__cell">{{ entry.total_profit }} ₽</td>
+                        </tr>
+                    {% empty %}
+                        <tr class="profit-report__row">
+                            <td colspan="2" class="profit-report__cell profit-report__cell--empty">
+                                Данных о продажах пока нет.
+                            </td>
+                        </tr>
+                    {% endfor %}
+
+                    {% if monthly_stats %}
+                    <tr class="profit-report__row profit-report__row--total">
+                        <td class="profit-report__cell">ИТОГО ЗА ВСЁ ВРЕМЯ:</td>
+                        <td class="profit-report__cell">{{ total_all_time }} ₽</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+
+        </div>
+    </div>
+    <br>
+{% endblock %}

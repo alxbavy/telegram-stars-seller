@@ -20,7 +20,7 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
-          target: "/root/bot_project"
+          target: "/root/telegram-stars-seller"
           rm: true
 
       - name: Execute SSH commands

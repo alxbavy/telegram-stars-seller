@@ -8,7 +8,7 @@ from core.integrations.fragment import FragmentClient
 
 
 class PaymentService:
-    def __init__(
+    '''def __init__(
             self,
             trans_repo,
             settings_repo,
@@ -18,7 +18,7 @@ class PaymentService:
         self._trans_repo = trans_repo
         self._settings_repo = settings_repo
         self._star_service = star_service
-        self._fragment_client = fragment_client
+        self._fragment_client = fragment_client'''
 
     async def create_checkout(
             self,

@@ -5,6 +5,7 @@ from dishka import make_async_container
 from telegram.ext import ApplicationBuilder
 
 from core.ioc import BusinessLogicProvider
+from bot.router import get_conversation_handler
 
 class Command(BaseCommand):
     help = "Запуск Telegram бота"
@@ -19,9 +20,14 @@ class Command(BaseCommand):
 
         container = make_async_container(BusinessLogicProvider())
 
-        application = ApplicationBuilder().token(token).build()
+        application = (
+            ApplicationBuilder()
+            .token(token)
+            .arbitrary_callback_data(True)
+            .build()
+        )
         application.bot_data["dishka_container"] = container
 
-        application.add_handlers([])
+        application.add_handler(get_conversation_handler())
 
         application.run_polling()

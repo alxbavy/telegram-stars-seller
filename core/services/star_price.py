@@ -3,8 +3,8 @@ from core.domain import star_logic
 
 
 class StarService:
-    def __init__(self, settings_repo):
-        self.settings_repo = settings_repo
+    '''def __init__(self, settings_repo):
+        self.settings_repo = settings_repo'''
 
     async def get_order_price(self, stars_count: int, payment_method: str) -> Decimal:
         """Возвращает финальную стоимость заказа со всеми комиссиями."""

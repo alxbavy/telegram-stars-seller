@@ -1,4 +1,6 @@
 from telegram.ext import ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+
+from bot.handlers.back import handle_back_button
 from bot.states import BotConversationState
 from bot.callbacks import *
 from bot.handlers.main import start_handler, handle_main_menu
@@ -40,8 +42,7 @@ def get_conversation_handler() -> ConversationHandler:
         },
         fallbacks=[
             CommandHandler("start", start_handler),
-            # Глобальный обработчик кнопки "Назад" можно реализовать здесь
-            # CallbackQueryHandler(handle_back_button, pattern=BackCallback)
+            CallbackQueryHandler(handle_back_button, pattern=BackCallback)
         ],
         name="main_conversation",
         # persistent=True TODO: Uncomment with persistent realisation

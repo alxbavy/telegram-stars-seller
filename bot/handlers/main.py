@@ -1,5 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+
+from bot.renderers.main import show_main_menu
 from bot.utils.injector import inject
 from bot.states import BotConversationState
 from bot.context import clear_order_draft
@@ -12,9 +14,7 @@ from bot.renderers.order import show_choose_quantity
 
 @inject
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_order_draft(context)
-    text = "😍 Ты не лэйм! Ты решил брать звёзды у нас — правильный выбор!\n\nЗвёзды дешевле, чем в самом Telegram!\nБери себе или дари друзьям ;)"
-    await render_screen(update, text, build_main_menu_kb(), "main_menu.jpg")
+    await show_main_menu(update)
     return BotConversationState.MAIN_MENU
 
 

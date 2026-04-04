@@ -8,6 +8,8 @@ dishka==1.9.1
 Django==6.0.3
 django-environ==0.13.0
 django-solo==2.5.1
+django-stubs==6.0.2
+django-stubs-ext==6.0.2
 gunicorn==25.3.0
 h11==0.16.0
 httpcore==1.0.9
@@ -18,6 +20,7 @@ python-dotenv==1.2.2
 python-telegram-bot==22.7
 requests==2.33.0
 sqlparse==0.5.5
+types-PyYAML==6.0.12.20250915
 typing_extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.3

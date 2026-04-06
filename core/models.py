@@ -11,6 +11,14 @@ class TelegramUser(models.Model):
     username = models.CharField(max_length=255, verbose_name="Username")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
 
+    def save(self, *args, **kwargs):
+        self.username = self.username.lstrip("@")
+        super().save(*args, **kwargs)
+
+    async def asave(self, *args, **kwargs):
+        self.username = self.username.lstrip("@")
+        await super().asave(*args, **kwargs)
+
     def __str__(self):
         return f"{self.username or self.telegram_id}"
 

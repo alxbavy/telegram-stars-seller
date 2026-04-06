@@ -9,4 +9,4 @@ async def show_main_menu(update: Update):
         "Звёзды дешевле, чем в самом Telegram!\n"
         "Бери себе или дари друзьям ;)"
     )
-    await render_screen(update, text, build_main_menu_kb(), "main_menu.png")
+    await render_screen(update, text, build_main_menu_kb(), "main_menu.jpg")

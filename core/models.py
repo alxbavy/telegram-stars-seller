@@ -42,11 +42,20 @@ class Transaction(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
-    def save(self, *args, **kwargs):
-        # Если при сохранении target_username пустой (не указан подарок)
+    def _set_target_username_if_none(self) -> None:
+        """
+        Если при сохранении target_username пустой (не указан подарок), то target_username = self.telegram_user.username
+        """
         if not self.target_username:
             self.target_username = self.telegram_user.username
+
+    def save(self, *args, **kwargs) -> None:
+        self._set_target_username_if_none()
         super().save(*args, **kwargs)
+
+    async def asave(self, *args, **kwargs) -> None:
+        self._set_target_username_if_none()
+        await super().asave(*args, **kwargs)
 
     def __str__(self):
         return f"Транзакция #{self.id} ({self.telegram_user})"

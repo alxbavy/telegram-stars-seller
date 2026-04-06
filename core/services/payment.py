@@ -6,12 +6,12 @@ from core.repositories.settings_repo import SettingsRepository
 
 from core.domain.enums import TransactionStatus
 from core.schemas.payment import PaymentDTO
-from core.services.star_service import StarService
+from core.services.star_price import StarService
 from core.integrations.fragment import FragmentClient
 
 
 class PaymentService:
-    def __init__(
+    '''def __init__(
             self,
             trans_repo: TransactionRepository,
             user_repo: UserRepository,
@@ -23,7 +23,7 @@ class PaymentService:
         self._user_repo = user_repo
         self._settings_repo = settings_repo
         self._star_service = star_service
-        self._fragment_client = fragment_client
+        self._fragment_client = fragment_client'''
 
     async def create_checkout(
             self,

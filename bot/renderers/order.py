@@ -4,7 +4,7 @@ from bot.keyboards.order import *
 
 
 async def show_choose_quantity(update: Update):
-    text = "🧠 <b>Сколько покупаем звёзд?</b>\n\nПоказываем самые популярные варианты.\nМожно ввести своё количество ;)"
+    text = "🧠 <b>Сколько покупаем звёзд?</b>"
     await render_screen(update, text, build_quantity_kb(), "choose_quantity.jpg")
 
 
@@ -35,21 +35,24 @@ async def show_user_not_found(update: Update):
 
 async def show_payment_methods(update: Update, sbp_price: float, card_price: float, is_gift: bool,
                                username: str = None):
-    if is_gift:
-        text = f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}.\nВыбери: СБП или Картой."
-        back_dest = BackDestination.ENTER_GIFT_USERNAME
-        photo = "payment_method_gift.jpg"
-    else:
-        text = "💸 <b>Теперь выбери способ оплаты</b>\n\nВыбери: СБП или Картой."
-        back_dest = BackDestination.CHOOSE_RECIPIENT
-        photo = "payment_method_self.jpg"
+
+    text = "💸 <b>Теперь выбери способ оплаты</b>\n\nВыбери: СБП или Картой."
+    back_dest = BackDestination.CHOOSE_RECIPIENT
+    photo = "payment_method_self.jpg"
 
     await render_screen(update, text, build_payment_methods_kb(sbp_price, card_price, back_dest), photo)
 
 
-async def show_order_confirmation(update: Update, stars: int, price: float, pay_url: str, is_gift: bool):
-    text = f"☝️ <b>Проверь заказ перед оплатой!</b>\n\nПополним — ⭐ {stars} звёзд\nСтоимость — {price} ₽\n\nСсылка на оплату действует 30 минут."
+async def show_order_confirmation(update: Update, stars: int, price: float, pay_url: str, is_gift: bool, method_name: str = "СБП/Картой"):
+    text = (
+        "<b>☝️ Проверь заказ перед оплатой!</b>\n\n"
+        f"Пополним — ⭐ {stars} звёзд\n"
+        f"Стоимость — {price} ₽\n"
+        f"Оплата — {method_name}\n\n"
+    )
     back_dest = BackDestination.CHOOSE_PAYMENT_GIFT if is_gift else BackDestination.CHOOSE_PAYMENT_SELF
     photo = "order_confirmation_gift.jpg" if is_gift else "order_confirmation_self.jpg"
 
     await render_screen(update, text, build_confirmation_kb(pay_url, back_dest, not is_gift), photo)
+
+

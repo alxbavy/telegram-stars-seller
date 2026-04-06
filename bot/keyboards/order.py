@@ -9,17 +9,7 @@ def build_quantity_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("⭐ 50 звёзд", callback_data=FixedQuantityCallback(50)),
-            InlineKeyboardButton("⭐ 100 звёзд", callback_data=FixedQuantityCallback(100))
         ],
-        [
-            InlineKeyboardButton("⭐ 250 звёзд", callback_data=FixedQuantityCallback(250)),
-            InlineKeyboardButton("⭐ 300 звёзд", callback_data=FixedQuantityCallback(300))
-        ],
-        [
-            InlineKeyboardButton("⭐ 500 звёзд", callback_data=FixedQuantityCallback(500)),
-            InlineKeyboardButton("⭐ 1000 звёзд", callback_data=FixedQuantityCallback(1000))
-        ],
-        [InlineKeyboardButton("✏️ Своё количество", callback_data=CustomQuantityCallback())],
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.MAIN_MENU))]
     ])
 
@@ -35,7 +25,6 @@ def build_large_order_kb(support_url: str) -> InlineKeyboardMarkup:
 def build_recipient_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🥰 Себе", callback_data=RecipientModeCallback(RecipientMode.SELF))],
-        [InlineKeyboardButton("🎁 В подарок", callback_data=RecipientModeCallback(RecipientMode.GIFT))],
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.CHOOSE_QUANTITY))]
     ])
 
@@ -52,13 +41,14 @@ def build_payment_methods_kb(sbp_price: float, card_price: float, back_dest: Bac
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback("sbp"))],
         [InlineKeyboardButton(f"💳 Картой — {card_price} ₽", callback_data=PaymentMethodCallback("card"))],
+        # -----------------------------------------------------------
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))]
     ])
 
 def build_confirmation_kb(pay_url: str, back_dest: BackDestination, is_self: bool) -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton("💳 Оплатить", url=pay_url)]]
     if is_self:
-        buttons.append([InlineKeyboardButton("🎟️ Ввести промокод", callback_data="promo_stub")])
+        pass
     buttons.append([InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))])
     return InlineKeyboardMarkup(buttons)
 

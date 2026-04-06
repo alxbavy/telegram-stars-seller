@@ -54,8 +54,14 @@ async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TY
 
     if cb_data.mode == RecipientMode.SELF:
         ctx.order.target_username = None
-        sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
-        card_price = await star_service.get_order_price(ctx.order.quantity, "card")
+
+        # --- ВРЕМЕННО ДЛЯ ПЛАТЕЖКИ ---
+        # sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
+        # card_price = await star_service.get_order_price(ctx.order.quantity, "card")
+        sbp_price = 69.69
+        card_price = 69.69
+        # -----------------------------
+
         await show_payment_methods(update, sbp_price, card_price, is_gift=False)
         return BotConversationState.CHOOSE_PAYMENT_SELF
     else:
@@ -93,18 +99,29 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     ctx = get_view_context(context)
     ctx.order.payment_method_id = cb_data.method_id
 
-    # Создаем checkout через сервис
-    payment_dto = await payment_service.create_checkout(
-        user_id=update.effective_user.id,
-        stars_count=ctx.order.quantity,
-        method=cb_data.method_id,
-        target_username=ctx.order.target_username
-    )
+    # --- ВРЕМЕННО ДЛЯ ПЛАТЕЖКИ ---
+    # payment_dto = await payment_service.create_checkout(
+    #     user_id=update.effective_user.id,
+    #     stars_count=ctx.order.quantity,
+    #     method=cb_data.method_id,
+    #     target_username=ctx.order.target_username
+    # )
+    # ctx.order.checkout_transaction_id = payment_dto.transaction_id
+    # ctx.order.checkout_url = payment_dto.pay_url
+    # amount = payment_dto.amount
+    # pay_url = payment_dto.pay_url
 
-    ctx.order.checkout_transaction_id = payment_dto.transaction_id
-    ctx.order.checkout_url = payment_dto.pay_url
+    amount = 69.69
+    pay_url = "https://t.me/pmlame"
+    ctx.order.checkout_transaction_id = "temp_stub_id"
+    ctx.order.checkout_url = pay_url
+    # -----------------------------
 
     is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
-    await show_order_confirmation(update, ctx.order.quantity, payment_dto.amount, payment_dto.pay_url, is_gift)
+
+    # Определяем название метода для красивого вывода
+    method_name = "СБП" if cb_data.method_id == "sbp" else "Картой"
+
+    await show_order_confirmation(update, ctx.order.quantity, amount, pay_url, is_gift, method_name)
 
     return BotConversationState.ORDER_CONFIRMATION_GIFT if is_gift else BotConversationState.ORDER_CONFIRMATION_SELF

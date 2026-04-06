@@ -1,15 +1,13 @@
 from dishka import Provider, Scope, provide
-from core.repositories.user_repo import UserRepository
-from core.repositories.trans_repo import TransactionRepository
-from core.repositories.settings_repo import SettingsRepository
+
+from bot.stubs import SupportService, TelegramApiService, StatsService
 from core.services.star_price import StarService
 from core.services.payment import PaymentService
 
 
 class BusinessLogicProvider(Provider):
-    user_repo = provide(UserRepository, scope=Scope.APP)
-    trans_repo = provide(TransactionRepository, scope=Scope.APP)
-    settings_repo = provide(SettingsRepository, scope=Scope.APP)
-
+    support_service = provide(SupportService, scope=Scope.APP)
+    tg_api_service = provide(TelegramApiService, scope=Scope.APP)
+    stats_service = provide(StatsService, scope=Scope.APP)
     star_service = provide(StarService, scope=Scope.APP)
     payment_service = provide(PaymentService, scope=Scope.APP)

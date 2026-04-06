@@ -1,11 +1,10 @@
 from decimal import Decimal
-from core.repositories.payment import PaymentRepository
 from core.domain import star_logic
 
 
 class StarService:
-    def __init__(self, payment_repo: PaymentRepository):
-        self._payment_repo = payment_repo
+    '''def __init__(self, payment_repo: PaymentRepository):
+        self._payment_repo = payment_repo'''
 
     async def get_order_price(self, stars_count: int, payment_method: str) -> Decimal:
         """Возвращает финальную стоимость заказа со всеми комиссиями."""
@@ -25,3 +24,5 @@ class StarService:
         )
 
         return stars_total_price_final
+
+        return final_amount

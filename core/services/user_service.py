@@ -1,6 +1,16 @@
 from core.repositories.user_repository import UserRepository
 from core.repositories.trans_repo import TransactionRepository
 
+
+class UnregisteredUser(Exception):
+    def __init__(self, user_id: int, message: str | None = None):
+        if message is None:
+            message = f"User with id {user_id} was not registered"
+        self.message = message
+
+        super().__init__(self.message)
+
+
 class UserService:
     def __init__(self, user_repo: UserRepository, trans_repo: TransactionRepository):
         self._user_repo = user_repo
@@ -9,9 +19,8 @@ class UserService:
     async def get_profile_data(self, user_id: int) -> UserProfileDTO | None:
         user = await self._user_repo.get_by_telegram_id(user_id)
 
-        # TODO: порядок действий, если юзер не зарегистрирован? пока return None
         if not user:
-            return None
+            raise UnregisteredUser(user_id)
 
         stats = await self._trans_repo.get_user_stats(user)
         return UserProfileDTO({

@@ -1,9 +1,35 @@
-class UserService:
-    '''def __init__(self, user_repo, trans_repo):
-        self.user_repo = user_repo
-        self.trans_repo = trans_repo'''
+from core.repositories.user import UserRepository
+from core.repositories.trans_repo import TransactionRepository
 
-    async def get_profile_data(self, user_id: int):
-        user = await self.user_repo.get_or_create(user_id)
-        stats = await self.trans_repo.get_user_stats(user_id)
-        return # ToDo: UserProfileDTO
+
+class UnregisteredUser(Exception):
+    def __init__(self, user_id: int, message: str | None = None):
+        if message is None:
+            message = f"User with id {user_id} was not registered"
+        self.message = message
+
+        super().__init__(self.message)
+
+
+class UserService:
+    def __init__(self, user_repo: UserRepository, trans_repo: TransactionRepository):
+        self._user_repo = user_repo
+        self._trans_repo = trans_repo
+
+    async def get_profile_data(self, user_id: int) -> UserProfileDTO:
+        user = await self._user_repo.get_by_telegram_id(user_id)
+
+        if not user:
+            raise UnregisteredUser(user_id)
+
+        stats = await self._trans_repo.get_user_stats(user)
+        return UserProfileDTO({
+            "user": user,
+            "total_stars": stats['total_stars'],
+            "orders_count": stats['orders_count'],
+        })
+        # TODO: UserProfileDTO в stubs определён не совсем корректно
+        # вместо telegram_id: int должен быть user: TelegramUser, чтобы был доступ к username
+        # purchases_count нормально
+        # вместо stars_bought: int должен быть total_stars: int - так понятнее, что сумма звёзд за всё время
+        # разве balance и ref_link нужны?

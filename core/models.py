@@ -1,11 +1,23 @@
 from django.db import models
 from solo.models import SingletonModel
 
+import uuid
+
 
 class TelegramUser(models.Model):
+    objects = models.Manager()
+
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, verbose_name="Username")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
+
+    def save(self, *args, **kwargs):
+        self.username = self.username.lstrip("@")
+        super().save(*args, **kwargs)
+
+    async def asave(self, *args, **kwargs):
+        self.username = self.username.lstrip("@")
+        await super().asave(*args, **kwargs)
 
     def __str__(self):
         return f"{self.username or self.telegram_id}"
@@ -16,12 +28,15 @@ class TelegramUser(models.Model):
 
 
 class Transaction(models.Model):
+    objects = models.Manager()
+
     STATUS_CHOICES = [
-        ('PENDING', 'ОЖИДАЕТ'),
-        ('SUCCESS', 'УСПЕШНО'),
-        ('FAILED', 'ОШИБКА'),
+        ("PENDING", "ОЖИДАЕТ"),
+        ("SUCCESS", "УСПЕШНО"),
+        ("FAILED", "ОШИБКА"),
     ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True, editable=False, verbose_name="ID платежа")
     telegram_user = models.ForeignKey(
         TelegramUser,
         on_delete=models.CASCADE,
@@ -35,11 +50,20 @@ class Transaction(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
-    def save(self, *args, **kwargs):
-        # Если при сохранении target_username пустой (не указан подарок)
+    def _set_target_username_if_none(self) -> None:
+        """
+        Если при сохранении target_username пустой (не указан подарок), то target_username = self.telegram_user.username
+        """
         if not self.target_username:
             self.target_username = self.telegram_user.username
+
+    def save(self, *args, **kwargs) -> None:
+        self._set_target_username_if_none()
         super().save(*args, **kwargs)
+
+    async def asave(self, *args, **kwargs) -> None:
+        self._set_target_username_if_none()
+        await super().asave(*args, **kwargs)
 
     def __str__(self):
         return f"Транзакция #{self.id} ({self.telegram_user})"
@@ -50,6 +74,8 @@ class Transaction(models.Model):
 
 
 class TransactionMetadata(models.Model):
+    objects = models.Manager()
+
     TYPES_CHOICES =[
         ("PURCHASE", "Покупка"),
     ]
@@ -77,6 +103,8 @@ class MonthlyProfit(Transaction):
 
 
 class PaymentMethod(models.Model):
+    objects = models.Manager()
+
     name = models.CharField(max_length=100, verbose_name="Название системы")
     commission_percent = models.DecimalField(
         max_digits=5,
@@ -95,6 +123,8 @@ class PaymentMethod(models.Model):
 
 
 class GlobalSettings(SingletonModel):
+    objects = models.Manager()
+
     star_base_cost = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -129,6 +159,8 @@ class GlobalSettings(SingletonModel):
 
 
 class ExchangeRate(SingletonModel):
+    objects = models.Manager()
+
     usd_rate = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -150,6 +182,8 @@ class ExchangeRate(SingletonModel):
 
 
 class BotState(models.Model):
+    objects = models.Manager()
+
     user_id = models.BigIntegerField(unique=True)
     data = models.JSONField(default=dict)
     state = models.TextField(null=True)

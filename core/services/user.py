@@ -28,9 +28,3 @@ class UserService:
             "total_stars": stats['total_stars'],
             "orders_count": stats['orders_count'],
         })
-
-        # {
-        #     "user": user,
-        #     "total_stars": stats['total_stars'],
-        #     "orders_count": stats['orders_count']
-        # }

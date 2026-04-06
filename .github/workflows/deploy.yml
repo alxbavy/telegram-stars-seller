@@ -3,7 +3,7 @@ name: Deploy
 on:
   push:
     branches:
-      - main
+      - temp/ui-for-payment-system
 
 jobs:
   deploy:

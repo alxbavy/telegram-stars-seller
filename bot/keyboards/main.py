@@ -6,8 +6,7 @@ def build_main_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⭐ Купить звёзды", callback_data=MainMenuCallback(MainMenuAction.BUY))],
         [
-            InlineKeyboardButton("👄 Поддержка", callback_data=MainMenuCallback(MainMenuAction.SUPPORT)),
-            InlineKeyboardButton("👻 Мой профиль", callback_data=MainMenuCallback(MainMenuAction.PROFILE))
+            InlineKeyboardButton("👄 Поддержка", callback_data=MainMenuCallback(MainMenuAction.SUPPORT))
         ]
     ])
 

@@ -55,8 +55,8 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
         # так как мы не храним их в контексте (цены могут измениться).
         # Берем количество звезд из черновика.
         quantity = ctx.order.quantity
-        sbp_price = await star_service.get_order_price(quantity, "sbp")
-        card_price = await star_service.get_order_price(quantity, "card")
+        sbp_price = 69.69
+        card_price = 69.69
 
         is_gift = (dest == BackDestination.CHOOSE_PAYMENT_GIFT)
         username = ctx.order.target_username if is_gift else None

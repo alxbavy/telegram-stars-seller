@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.renderers.main import show_main_menu
+from bot.renderers.support import show_support_page
 from bot.utils.injector import inject
 from bot.states import BotConversationState
 from bot.context import clear_order_draft
@@ -29,8 +30,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, s
 
     elif cb_data.action == MainMenuAction.SUPPORT:
         url = await support_service.get_support_url()
-        text = "💬 Нужна помощь?\n\nАгент поддержки отвечает с 09:00 по 22:00 (МСК).\nПри высокой нагрузке ответ может занять немного больше времени."
-        await render_screen(update, text, build_support_kb(url), "support.jpg")
+        await show_support_page(update, url)
         return BotConversationState.SUPPORT
 
     elif cb_data.action == MainMenuAction.PROFILE:

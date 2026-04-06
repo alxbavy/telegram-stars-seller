@@ -10,12 +10,12 @@ async def show_choose_quantity(update: Update):
 
 async def show_custom_quantity_input(update: Update):
     text = "🌟 Введи количество звёзд\n\nМинимум 50."
-    await render_screen(update, text, build_back_to_quantity_kb(), "custom_quantity_input.jpg")
+    await render_screen(update, text, build_back_to_quantity_kb())
 
 
 async def show_large_order_warning(update: Update, support_url: str):
     text = "⚠️ Такой заказ нужно согласовать!\n\nБольшие заказы мы не обрабатываем автоматически.\nНапиши в поддержку, чтобы оформить пополнение."
-    await render_screen(update, text, build_large_order_kb(support_url), "large_order_warning.jpg")
+    await render_screen(update, text, build_large_order_kb(support_url))
 
 
 async def show_choose_recipient(update: Update):
@@ -25,12 +25,12 @@ async def show_choose_recipient(update: Update):
 
 async def show_enter_username(update: Update):
     text = "🎁 Введи @username получателя\n\nНапример: @dween"
-    await render_screen(update, text, build_back_to_recipient_kb(), "enter_username.jpg")
+    await render_screen(update, text, build_back_to_recipient_kb())
 
 
 async def show_user_not_found(update: Update):
     text = "❌ Пользователь не найден\n\nПроверь @username и повтори попытку."
-    await render_screen(update, text, build_user_not_found_kb(), "user_not_found.jpg")
+    await render_screen(update, text, build_user_not_found_kb())
 
 
 async def show_payment_methods(update: Update, sbp_price: float, card_price: float, is_gift: bool,

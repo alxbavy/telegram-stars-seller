@@ -1,4 +1,4 @@
-from core.repositories.user_repository import UserRepository
+from core.repositories.user import UserRepository
 from core.repositories.trans_repo import TransactionRepository
 
 

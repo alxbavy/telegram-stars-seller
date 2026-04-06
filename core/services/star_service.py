@@ -1,5 +1,5 @@
 from decimal import Decimal
-from core.repositories.payment_repository import PaymentRepository
+from core.repositories.payment import PaymentRepository
 from core.domain import star_logic
 
 

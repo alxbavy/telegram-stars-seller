@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from bot.utils.injector import inject
-from core.services.payment_service import PaymentService
+from core.services.payment import PaymentService
 
 
 RECIPIENT, USERNAME, AMOUNT, CUSTOM_AMOUNT, METHOD = range(5)

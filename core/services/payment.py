@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from core.repositories.trans_repo import TransactionRepository
-from core.repositories.payment_repository import PaymentRepository
+from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
 from core.schemas.payment_schemas import PaymentDTO

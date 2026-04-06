@@ -3,7 +3,7 @@ from core.repositories.user_repo import UserRepository
 from core.repositories.trans_repo import TransactionRepository
 from core.repositories.settings_repo import SettingsRepository
 from core.services.star_service import StarService
-from core.services.payment_service import PaymentService
+from core.services.payment import PaymentService
 
 
 class BusinessLogicProvider(Provider):

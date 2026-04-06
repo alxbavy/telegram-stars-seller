@@ -30,7 +30,7 @@ class PaymentService:
         """
         Создает заказ, сохраняет транзакцию в БД и генерирует ссылку на оплату.
         """
-        if self._payment_repo.is_maintenance_mode():
+        if await self._payment_repo.is_maintenance_mode():
             raise Exception("maintenance_mode on True")
 
         amount = await self._star_service.get_order_price(stars_count, method)

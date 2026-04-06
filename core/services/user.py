@@ -16,7 +16,7 @@ class UserService:
         self._user_repo = user_repo
         self._trans_repo = trans_repo
 
-    async def get_profile_data(self, user_id: int) -> UserProfileDTO | None:
+    async def get_profile_data(self, user_id: int) -> UserProfileDTO:
         user = await self._user_repo.get_by_telegram_id(user_id)
 
         if not user:
@@ -28,3 +28,8 @@ class UserService:
             "total_stars": stats['total_stars'],
             "orders_count": stats['orders_count'],
         })
+        # TODO: UserProfileDTO в stubs определён не совсем корректно
+        # вместо telegram_id: int должен быть user: TelegramUser, чтобы был доступ к username
+        # purchases_count нормально
+        # вместо stars_bought: int должен быть total_stars: int - так понятнее, что сумма звёзд за всё время
+        # разве balance и ref_link нужны?

@@ -1,6 +1,7 @@
 from telegram.ext import ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from bot.handlers.back import handle_back_button
+from bot.handlers.profile import handle_profile_menu, handle_history_pagination
 from bot.states import BotConversationState
 from bot.callbacks import *
 from bot.handlers.main import start_handler, handle_main_menu
@@ -16,6 +17,13 @@ def get_conversation_handler() -> ConversationHandler:
         states={
             BotConversationState.MAIN_MENU: [
                 CallbackQueryHandler(handle_main_menu, pattern=MainMenuCallback)
+            ],
+            BotConversationState.INFO: [],
+            BotConversationState.PROFILE: [
+                CallbackQueryHandler(handle_profile_menu, pattern=ProfileMenuCallback)
+            ],
+            BotConversationState.ORDER_HISTORY: [
+                CallbackQueryHandler(handle_history_pagination, pattern=HistoryPageCallback)
             ],
             BotConversationState.CHOOSE_QUANTITY: [
                 CallbackQueryHandler(handle_fixed_quantity, pattern=FixedQuantityCallback),

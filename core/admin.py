@@ -27,7 +27,8 @@ class TransactionTypeMixin:
 class TransactionInline(admin.TabularInline, TransactionTypeMixin):
     """Инлайн для отображения транзакций в карточке пользователя"""
     model = Transaction
-    readonly_fields = ("amount_stars", "amount_fiat", "status", "transaction_type", "created_at", "updated_at")
+    readonly_fields = ("target_username", "amount_stars", "amount_fiat",
+                       "status", "transaction_type", "created_at", "updated_at")
     show_change_link = True
     can_delete = False
     ordering = ("-created_at",)

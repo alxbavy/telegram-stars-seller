@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
-from core.repositories.settings_repo import SettingsRepository
+from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
 from core.schemas.payment import PaymentDTO
@@ -13,15 +13,15 @@ from core.integrations.fragment import FragmentClient
 class PaymentService:
     '''def __init__(
             self,
-            trans_repo: TransactionRepository,
-            user_repo: UserRepository,
-            settings_repo: SettingsRepository,
+            trans_repo,
+            user_repo
+            payment_repo,
             star_service: StarService,
             fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
         self._user_repo = user_repo
-        self._settings_repo = settings_repo
+        self._payment_repo = payment_repo
         self._star_service = star_service
         self._fragment_client = fragment_client'''
 
@@ -35,8 +35,7 @@ class PaymentService:
         """
         Создает заказ, сохраняет транзакцию в БД и генерирует ссылку на оплату.
         """
-        settings = self._settings_repo.get_active_settings()
-        if settings.maintenance_mode:
+        if await self._payment_repo.is_maintenance_mode():
             raise Exception("maintenance_mode on True")
 
         amount = await self._star_service.get_order_price(stars_count, method)

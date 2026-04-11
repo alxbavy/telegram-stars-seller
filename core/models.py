@@ -146,6 +146,11 @@ class GlobalSettings(SingletonModel):
         verbose_name="Технический перерыв"
     )
 
+    @classmethod
+    async def aget_solo(cls):
+        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        return obj
+
     def __str__(self):
         return "Глобальные настройки"
 
@@ -163,6 +168,11 @@ class ExchangeRate(SingletonModel):
         verbose_name="Текущий курс USD"
     )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
+
+    @classmethod
+    async def aget_solo(cls):
+        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        return obj
 
     def __str__(self):
         return f"Курс доллара: {self.usd_rate}"

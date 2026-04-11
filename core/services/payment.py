@@ -1,21 +1,21 @@
 from decimal import Decimal
 
+from core.dto.payment import PaymentDTO
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
-from core.schemas.payment import PaymentDTO
 from core.services.star_price import StarService
 from core.integrations.fragment import FragmentClient
 
 
 class PaymentService:
-    '''def __init__(
+    def __init__(
             self,
-            trans_repo,
-            user_repo
-            payment_repo,
+            trans_repo: TransactionRepository,
+            user_repo: UserRepository,
+            payment_repo: PaymentRepository,
             star_service: StarService,
             fragment_client: FragmentClient
     ):
@@ -23,7 +23,7 @@ class PaymentService:
         self._user_repo = user_repo
         self._payment_repo = payment_repo
         self._star_service = star_service
-        self._fragment_client = fragment_client'''
+        self._fragment_client = fragment_client
 
     async def create_checkout(
             self,

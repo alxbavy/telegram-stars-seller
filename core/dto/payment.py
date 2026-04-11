@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from typing_extensions import NamedTuple
+from typing import NamedTuple
 
 from core.models import GlobalSettings, ExchangeRate
 
@@ -10,6 +10,7 @@ class PaymentDTO:
     transaction_id: int
     pay_url: str
     amount: Decimal
+
 
 class PricingDTO(NamedTuple):
     settings: GlobalSettings

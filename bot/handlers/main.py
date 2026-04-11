@@ -9,8 +9,8 @@ from bot.context import clear_order_draft
 from bot.callbacks import MainMenuCallback, MainMenuAction
 from bot.renderers.base import render_screen
 from bot.keyboards.main import build_main_menu_kb, build_support_kb
-from bot.stubs import SupportService
 from bot.renderers.order import show_choose_quantity
+from core.services.support import SupportService
 
 
 @inject

@@ -1,7 +1,7 @@
 from decimal import Decimal
 
+from core.dto.payment import PricingDTO
 from core.models import GlobalSettings, ExchangeRate, PaymentMethod
-from core.schemas.payment import PricingDTO
 
 
 class PaymentRepository:

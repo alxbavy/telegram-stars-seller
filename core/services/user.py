@@ -1,5 +1,6 @@
+from core.dto.user import UserProfileDTO
+from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
-from core.repositories.trans_repo import TransactionRepository
 
 
 class UnregisteredUser(Exception):

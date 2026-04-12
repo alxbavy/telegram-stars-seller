@@ -67,6 +67,15 @@ class TransactionRepository:
         ]
 
     @staticmethod
+    async def get_many_success_by_telegram_id(telegram_id: int) -> list[Transaction]:
+        return [
+            t async for t in Transaction.objects.filter(
+                telegram_user__telegram_id=telegram_id,
+                status=TransactionStatus.SUCCESS
+            ).order_by("-created_at")
+        ]
+
+    @staticmethod
     async def update_status(transaction_obj: Transaction, new_status: str) -> Transaction:
         transaction_obj.status = new_status
         await transaction_obj.asave(update_fields=["status"])

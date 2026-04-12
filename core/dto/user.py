@@ -6,5 +6,3 @@ class UserProfileDTO:
     telegram_id: int
     purchases_count: int
     stars_bought: int
-    balance: float
-    ref_link: str

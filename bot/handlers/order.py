@@ -1,13 +1,12 @@
-from telegram import Update
 from telegram.ext import ContextTypes
 from bot.utils.injector import inject
 from core.services.star_price import StarService
 from core.services.payment import PaymentService
 from bot.states import BotConversationState
-from bot.context import get_view_context, RecipientMode
-from bot.callbacks import FixedQuantityCallback, RecipientModeCallback, PaymentMethodCallback
+from bot.context import get_view_context
 from bot.renderers.order import *
-from bot.stubs import TelegramApiService, SupportService
+from core.services.support import SupportService
+from core.services.telegram import TelegramService
 
 
 @inject
@@ -70,7 +69,7 @@ async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 @inject
-async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_api: TelegramApiService,
+async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_api: TelegramService,
                                star_service: StarService):
     username = update.message.text
     # Транзиентный статус 8a

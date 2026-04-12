@@ -1,30 +1,6 @@
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Optional
-from .context import RecipientMode
-
-
-class MainMenuAction(StrEnum):
-    BUY = "buy"
-    SUPPORT = "support"
-    PROFILE = "profile"
-
-
-class ProfileAction(StrEnum):
-    HISTORY = "history"
-    REFERRALS = "referrals"
-
-
-class BackDestination(StrEnum):
-    MAIN_MENU = "main_menu"
-    CHOOSE_QUANTITY = "choose_quantity"
-    CUSTOM_QUANTITY_INPUT = "custom_quantity_input"
-    CHOOSE_RECIPIENT = "choose_recipient"
-    ENTER_GIFT_USERNAME = "enter_gift_username"
-    CHOOSE_PAYMENT_SELF = "choose_payment_self"
-    CHOOSE_PAYMENT_GIFT = "choose_payment_gift"
-    PROFILE = "profile"
-    REFERRALS_LIST = "referrals_list"
+from bot.context import RecipientMode
+from bot.enums import MainMenuAction, BackDestination, ProfileAction
 
 
 @dataclass(frozen=True)

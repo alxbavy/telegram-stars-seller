@@ -9,7 +9,25 @@ def build_quantity_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("⭐ 50 звёзд", callback_data=FixedQuantityCallback(50)),
+            InlineKeyboardButton("⭐ 100 звёзд", callback_data=FixedQuantityCallback(100)),
+            InlineKeyboardButton("⭐ 150 звёзд", callback_data=FixedQuantityCallback(150)),
         ],
+        [
+            InlineKeyboardButton("⭐ 250 звёзд", callback_data=FixedQuantityCallback(250)),
+            InlineKeyboardButton("⭐ 350 звёзд", callback_data=FixedQuantityCallback(350)),
+            InlineKeyboardButton("⭐ 500 звёзд", callback_data=FixedQuantityCallback(500)),
+        ],
+        [
+            InlineKeyboardButton("⭐ 750 звёзд", callback_data=FixedQuantityCallback(750)),
+            InlineKeyboardButton("⭐ 1000 звёзд", callback_data=FixedQuantityCallback(1000)),
+            InlineKeyboardButton("⭐ 1500 звёзд", callback_data=FixedQuantityCallback(1500)),
+        ],
+        [
+            InlineKeyboardButton("⭐ 2500 звёзд", callback_data=FixedQuantityCallback(2500)),
+            InlineKeyboardButton("⭐ 5000 звёзд", callback_data=FixedQuantityCallback(5000)),
+            InlineKeyboardButton("⭐ 10000 звёзд", callback_data=FixedQuantityCallback(10000)),
+        ],
+        [InlineKeyboardButton("✏️ Своё количество", callback_data=CustomQuantityCallback())],
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.MAIN_MENU))]
     ])
 

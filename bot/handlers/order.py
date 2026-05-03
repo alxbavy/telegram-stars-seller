@@ -54,12 +54,8 @@ async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TY
     if cb_data.mode == RecipientMode.SELF:
         ctx.order.target_username = None
 
-        # --- ВРЕМЕННО ДЛЯ ПЛАТЕЖКИ ---
-        # sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
-        # card_price = await star_service.get_order_price(ctx.order.quantity, "card")
-        sbp_price = 69.69
-        card_price = 69.69
-        # -----------------------------
+        sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
+        card_price = await star_service.get_order_price(ctx.order.quantity, "card")
 
         await show_payment_methods(update, sbp_price, card_price, is_gift=False)
         return BotConversationState.CHOOSE_PAYMENT_SELF
@@ -93,7 +89,7 @@ async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 @inject
-async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService):
+async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE, star_service: StarService):
     cb_data: PaymentMethodCallback = update.callback_query.data
     ctx = get_view_context(context)
     ctx.order.payment_method_id = cb_data.method_id
@@ -110,7 +106,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     # amount = payment_dto.amount
     # pay_url = payment_dto.pay_url
 
-    amount = 69.69
+    amount = await star_service.get_order_price(ctx.order.quantity, "sbp")
     pay_url = "https://t.me/pmlame"
     ctx.order.checkout_transaction_id = "temp_stub_id"
     ctx.order.checkout_url = pay_url

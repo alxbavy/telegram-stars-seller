@@ -8,9 +8,12 @@ from core.models import TelegramUser, Transaction, TransactionMetadata
 
 
 class TransactionRepository:
-    @staticmethod
+    model = Transaction
+    model_metadata = TransactionMetadata
+
     @sync_to_async(thread_sensitive=True)
     def create_transaction(
+            self,
             user: TelegramUser,
             amount_fiat: float,
             amount_stars: int,
@@ -28,14 +31,14 @@ class TransactionRepository:
             json_payload = {}
 
         with transaction.atomic():
-            new_transaction = Transaction.objects.create(
+            new_transaction = self.model.objects.create(
                 telegram_user=user,
                 amount_fiat=amount_fiat,
                 amount_stars=amount_stars,
                 status=status,
                 target_username=target_username
             )
-            TransactionMetadata.objects.create(
+            self.model_metadata.objects.create(
                 transaction=new_transaction,
                 type=transaction_type,
                 payment_method=payment_method,
@@ -43,36 +46,60 @@ class TransactionRepository:
             )
             return new_transaction
 
-    @staticmethod
-    async def get_by_transaction_id(transaction_id: str | uuid.UUID) -> Transaction | None:
-        return await (
-            Transaction.objects
-            .select_related("metadata_info")
-            .filter(id=transaction_id)
-            .afirst()
-        )
+    async def get_by_transaction_id(
+            self,
+            transaction_id: str | uuid.UUID,
+            is_select_metadata: bool = True
+    ) -> Transaction | None:
+        query = self.model.objects.filter(id=transaction_id)
+        if is_select_metadata:
+            query = query.select_related("metadata_info")
+        return await query.afirst()
 
-    @staticmethod
-    async def get_many_by_username(username: str) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(telegram_user__username=username).order_by("-created_at")
-        ]
+    async def get_many_by(
+            self,
+            *,
+            telegram_id: int | None = None,
+            username: str | None = None,
+            status: TransactionStatus = None,
+            start_idx: int = None,
+            stop_idx: int = None,
+            is_count: bool = False,
+            is_count_only: bool = False,
+            is_select_metadata: bool = False
+    ) -> tuple[list[Transaction], int] | list[Transaction] | int:
+        if telegram_id is None and username is None:
+            raise ValueError("telegram_id or username must be provided")
 
-    # TODO: можно объединить под один get_many(username = None, telegram_id = None), если не будет дополнительной логики
-    @staticmethod
-    async def get_many_by_telegram_id(telegram_id: int) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(telegram_user__telegram_id=telegram_id).order_by("-created_at")
-        ]
+        query = self.model.objects
 
-    @staticmethod
-    async def get_many_success_by_telegram_id(telegram_id: int) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(
-                telegram_user__telegram_id=telegram_id,
-                status=TransactionStatus.SUCCESS
-            ).order_by("-created_at")
-        ]
+        if telegram_id is not None:
+            query = query.filter(telegram_user__telegram_id=telegram_id)
+
+        if username is not None:
+            query = query.filter(telegram_user__username=username)
+
+        if status is not None:
+            query = query.filter(status=status)
+
+        if is_select_metadata:
+            query = query.select_related("metadata_info")
+
+        query = query.order_by("-created_at")
+
+        if start_idx is not None and stop_idx is not None:
+            query = query[start_idx:stop_idx]
+        elif start_idx is not None:
+            query = query[start_idx:]
+        elif stop_idx is not None:
+            query = query[:stop_idx]
+
+        if is_count_only:
+            return await query.acount()
+        elif is_count:
+            return [t async for t in query], await query.acount()
+        else:
+            return [t async for t in query]
 
     @staticmethod
     async def update_status(transaction_obj: Transaction, new_status: str) -> Transaction:

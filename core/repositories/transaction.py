@@ -83,7 +83,7 @@ class TransactionRepository:
     @staticmethod
     async def update_payload(transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
         """
-        Если transaction_obj был получен не с помощью get_by_transaction_id(...),
+        Если transaction_obj был получен без вызова .select_related("metadata_info"),
         будет сгенерирован дополнительный запрос на получение объекта метаданных,
         так что данную функцию лучше не использовать в цикле с неполными транзакциями.
         """

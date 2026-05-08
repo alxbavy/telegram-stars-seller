@@ -25,5 +25,3 @@ class StarService:
         )
 
         return stars_total_price_final
-
-        return final_amount

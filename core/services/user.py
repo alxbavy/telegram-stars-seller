@@ -1,5 +1,4 @@
 from core.dto.user import UserProfileDTO
-from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 
 
@@ -13,9 +12,8 @@ class UnregisteredUser(Exception):
 
 
 class UserService:
-    def __init__(self, user_repo: UserRepository, trans_repo: TransactionRepository):
+    def __init__(self, user_repo: UserRepository):
         self._user_repo = user_repo
-        self._trans_repo = trans_repo
 
     async def register_user(self, telegram_id: int, username: str | None):
         user = await self._user_repo.get_by_telegram_id(telegram_id)
@@ -34,14 +32,9 @@ class UserService:
         return user
 
     async def get_profile_data(self, user_id: int) -> UserProfileDTO:
-        user = await self._user_repo.get_by_telegram_id(user_id)
+        profile_data = await self._user_repo.get_user_stats(user_id)
 
-        if not user:
+        if profile_data is None:
             raise UnregisteredUser(user_id)
 
-        stats = await self._trans_repo.get_user_stats(user)
-        return UserProfileDTO(
-            user.telegram_id,
-            stats['total_stars'],
-            stats['orders_count'],
-        )
+        return profile_data

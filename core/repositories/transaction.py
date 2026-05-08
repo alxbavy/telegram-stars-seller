@@ -2,7 +2,6 @@ import uuid
 
 from django.db import transaction
 from asgiref.sync import sync_to_async
-from django.db.models import Sum
 
 from core.domain.enums import TransactionStatus, TransactionType
 from core.models import TelegramUser, Transaction, TransactionMetadata
@@ -93,18 +92,3 @@ class TransactionRepository:
         metadata.payload.update(new_payload)
         await metadata.asave(update_fields=["payload"])
         return metadata
-
-    @staticmethod
-    async def get_user_stats(user: TelegramUser) -> dict[str, int]:
-        total_stars = (
-            await Transaction.objects
-            .filter(telegram_user=user)
-            .aaggregate(Sum("amount_stars"))
-        )["amount_stars__sum"] or 0
-
-        orders_count = await Transaction.objects.filter(telegram_user=user).acount()
-
-        return {
-            "total_stars": total_stars,
-            "orders_count": orders_count,
-        }

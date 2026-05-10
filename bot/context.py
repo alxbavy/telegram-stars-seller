@@ -1,7 +1,12 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Optional
+
+from telegram import Message
 from telegram.ext import ContextTypes
+
+from core.dto.user import UserProfileDTO
+
 
 class RecipientMode(StrEnum):
     SELF = "self"
@@ -25,8 +30,10 @@ class ListNavigationState:
 
 @dataclass
 class ViewContext:
+    active_conversation: Message | None = None
     order: OrderDraft = field(default_factory=OrderDraft)
     lists: ListNavigationState = field(default_factory=ListNavigationState)
+    profile_data: UserProfileDTO | None = None
 
 def get_view_context(context: ContextTypes.DEFAULT_TYPE) -> ViewContext:
     """Helper для безопасного получения/создания контекста."""

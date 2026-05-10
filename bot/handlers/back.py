@@ -1,13 +1,15 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+
+from bot.utils.active_conversation_checker import ensure_use_active_conversation_with_callback
 from bot.utils.injector import inject
 
 from core.services.star_price import StarService
 from bot.states import BotConversationState
-from bot.context import get_view_context, clear_order_draft
+from bot.context import get_view_context
 from bot.callbacks import BackCallback, BackDestination
 
-from bot.renderers.main import show_main_menu
+from bot.handlers.start import start_handler
 from bot.renderers.order import (
     show_choose_quantity,
     show_custom_quantity_input,
@@ -15,8 +17,10 @@ from bot.renderers.order import (
     show_enter_username,
     show_payment_methods
 )
+from bot.renderers.profile import show_profile_page
 
 
+@ensure_use_active_conversation_with_callback
 @inject
 async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE, star_service: StarService):
     """
@@ -30,24 +34,26 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
     ctx = get_view_context(context)
 
     if dest == BackDestination.MAIN_MENU:
-        clear_order_draft(context)
-        await show_main_menu(update)
-        return BotConversationState.MAIN_MENU
+        return await start_handler(update, context)
 
     elif dest == BackDestination.CHOOSE_QUANTITY:
-        await show_choose_quantity(update)
+        msg = await show_choose_quantity(update)
+        ctx.active_conversation = msg
         return BotConversationState.CHOOSE_QUANTITY
 
     elif dest == BackDestination.CUSTOM_QUANTITY_INPUT:
-        await show_custom_quantity_input(update)
+        msg = await show_custom_quantity_input(update)
+        ctx.active_conversation = msg
         return BotConversationState.CUSTOM_QUANTITY_INPUT
 
     elif dest == BackDestination.CHOOSE_RECIPIENT:
-        await show_choose_recipient(update)
+        msg = await show_choose_recipient(update)
+        ctx.active_conversation = msg
         return BotConversationState.CHOOSE_RECIPIENT
 
     elif dest == BackDestination.ENTER_GIFT_USERNAME:
-        await show_enter_username(update)
+        msg = await show_enter_username(update)
+        ctx.active_conversation = msg
         return BotConversationState.ENTER_GIFT_USERNAME
 
     elif dest in (BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT):
@@ -61,13 +67,16 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
         is_gift = (dest == BackDestination.CHOOSE_PAYMENT_GIFT)
         username = ctx.order.target_username if is_gift else None
 
-        await show_payment_methods(update, sbp_price, card_price, is_gift=is_gift, username=username)
+        msg = await show_payment_methods(update, sbp_price, card_price, is_gift=is_gift, username=username)
+        ctx.active_conversation = msg
 
         return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
 
     elif dest == BackDestination.PROFILE:
-        # Заглушка для возврата в профиль
-        # await show_profile(update, user_profile_dto)
+        profile_data = ctx.profile_data
+        ctx.profile_data = None
+        msg = await show_profile_page(update, profile_data)
+        ctx.active_conversation = msg
         return BotConversationState.PROFILE
 
     elif dest == BackDestination.REFERRALS_LIST:

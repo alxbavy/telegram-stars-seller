@@ -4,9 +4,10 @@ from bot.handlers.back import handle_back_button
 from bot.handlers.profile import handle_profile_menu, handle_history_pagination
 from bot.states import BotConversationState
 from bot.callbacks import *
-from bot.handlers.main import start_handler, handle_main_menu
+from bot.handlers.main import handle_main_menu
 from bot.handlers.order import *
-from bot.handlers.start import repeat_order_callback
+from bot.handlers.start import start_handler, repeat_order_callback
+
 
 def get_conversation_handler() -> ConversationHandler:
     return ConversationHandler(

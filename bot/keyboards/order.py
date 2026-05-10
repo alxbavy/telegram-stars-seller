@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.callbacks import (
     FixedQuantityCallback, CustomQuantityCallback, BackCallback, BackDestination,
@@ -48,7 +50,7 @@ def build_user_not_found_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.CHOOSE_RECIPIENT))]
     ])
 
-def build_payment_methods_kb(sbp_price: float, card_price: float, back_dest: BackDestination) -> InlineKeyboardMarkup:
+def build_payment_methods_kb(sbp_price: Decimal, card_price: Decimal, back_dest: BackDestination) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback("sbp"))],
         [InlineKeyboardButton(f"💳 Картой — {card_price} ₽", callback_data=PaymentMethodCallback("card"))],

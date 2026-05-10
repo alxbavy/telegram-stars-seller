@@ -10,4 +10,4 @@ async def show_info_page(update: Update):
         "🌠 Отзывы:\nhttps://t.me/+MGPE9YDPigpkNDQy\n\n"
         "❓ Часто задаваемые вопросы:\nhttps://clck.su/faqlame"
     )
-    await render_screen(update, text, build_info_kb(), "info.jpg")
+    return await render_screen(update, text, build_info_kb(), "info.jpg")

@@ -6,13 +6,16 @@ from core.dto.user import UserProfileDTO
 
 
 async def show_profile_page(update: Update, profile_data: UserProfileDTO):
+    if not isinstance(profile_data, UserProfileDTO):
+        profile_data = UserProfileDTO(-1, -1, -1)
+
     text = (
         "👻 <b>Мой профиль</b>\n\n"
         f"🙊 Telegram ID: <code>{profile_data.telegram_id}</code>\n"
         f"🛍 Покупок: {profile_data.purchases_count}\n"
         f"⭐ Звёзд куплено: {profile_data.stars_bought}\n"
     )
-    await render_screen(update, text, build_profile_kb(), "profile.jpg")
+    return await render_screen(update, text, build_profile_kb(), "profile.jpg")
 
 
 async def show_order_history_page(update: Update, history_dto: OrderHistoryPageDTO):
@@ -31,7 +34,7 @@ async def show_order_history_page(update: Update, history_dto: OrderHistoryPageD
         f"{orders_text}"
     )
 
-    await render_screen(
+    return await render_screen(
         update,
         text,
         build_order_history_kb(history_dto.current_page, history_dto.total_pages),

@@ -7,7 +7,6 @@ class StatsService:
     def __init__(self, trans_repo: TransactionRepository):
         self._trans_repo = trans_repo
 
-    # TODO: по-хорошему, это должно быть в сервисе UserService, т.к. история заказов привязана к каждому конкретному юзеру
     async def get_order_history(self, user_id: int, page: int, per_page: int = 5) -> OrderHistoryPageDTO:
         """
         Возвращает список успешных заказов для страницы и общее количество страниц.
@@ -21,6 +20,13 @@ class StatsService:
             start_idx=per_page * (page - 1),
             stop_idx=per_page * page,
         )
+
+        if not transactions:
+            return OrderHistoryPageDTO(
+                items=[],
+                current_page=page,
+                total_pages=1
+            )
 
         items_dto = [
             OrderHistoryItemDTO(

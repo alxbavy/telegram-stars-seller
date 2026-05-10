@@ -44,8 +44,9 @@ class UserRepository:
         if user is None:
             return None
 
-        total_stars = (await user.transactions.aaggregate(Sum("amount_stars")))["amount_stars__sum"] or 0
-        orders_count = await user.transactions.filter(status=TransactionStatus.SUCCESS).acount()
+        success_orders = user.transactions.filter(status=TransactionStatus.SUCCESS)
+        total_stars = (await success_orders.aaggregate(Sum("amount_stars")))["amount_stars__sum"] or 0
+        orders_count = await success_orders.acount()
 
         return UserProfileDTO(
             telegram_id=user.telegram_id,

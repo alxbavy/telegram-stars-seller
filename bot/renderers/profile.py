@@ -6,15 +6,11 @@ from core.dto.user import UserProfileDTO
 
 
 async def show_profile_page(update: Update, profile_data: UserProfileDTO):
-    telegram_id = getattr(profile_data, "telegram_id", None)
-    orders_count = getattr(profile_data, "orders_count", 0)
-    total_stars = getattr(profile_data, "total_stars", 0)
-
     text = (
         "👻 <b>Мой профиль</b>\n\n"
-        f"🙊 Telegram ID: <code>{telegram_id}</code>\n"
-        f"🛍 Покупок: {orders_count}\n"
-        f"⭐ Звёзд куплено: {total_stars}\n"
+        f"🙊 Telegram ID: <code>{profile_data.telegram_id}</code>\n"
+        f"🛍 Покупок: {profile_data.purchases_count}\n"
+        f"⭐ Звёзд куплено: {profile_data.stars_bought}\n"
     )
     await render_screen(update, text, build_profile_kb(), "profile.jpg")
 

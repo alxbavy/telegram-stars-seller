@@ -68,9 +68,6 @@ class TransactionRepository:
             is_count_only: bool = False,
             is_select_metadata: bool = False
     ) -> tuple[list[Transaction], int] | list[Transaction] | int:
-        if telegram_id is None and username is None:
-            raise ValueError("telegram_id or username must be provided")
-
         query = self.model.objects
 
         if telegram_id is not None:

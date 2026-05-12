@@ -1,3 +1,5 @@
+from typing import cast
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -70,9 +72,10 @@ async def _handle_destination_choose_payment(
     # Берем количество звезд из черновика.
     ctx = get_view_context(context)
 
-    quantity = ctx.order.quantity
-    sbp_price = await star_service.get_order_price(quantity, "sbp")
-    card_price = await star_service.get_order_price(quantity, "card")
+    # noinspection PyUnnecessaryCast
+    stars_count = cast(int, ctx.order.quantity)
+    sbp_price = await star_service.get_order_price(stars_count, "sbp")
+    card_price = await star_service.get_order_price(stars_count, "card")
 
     cb_data = cast_callback(BackCallback, update.callback_query.data)
     is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)

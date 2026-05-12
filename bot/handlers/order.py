@@ -56,10 +56,6 @@ async def _handle_custom_quantity_input_helper(
         temp_msg = await update.message.reply_text("Пожалуйста, введите целое число.")
         add_temporary_message(context, temp_msg)
         return BotConversationState.CUSTOM_QUANTITY_INPUT
-    await clear_temporary_messages(context)  # TODO: проверить, что происходит с сообщениями
-
-    ctx = get_view_context(context)
-
 
     amount = int(text)
 
@@ -68,6 +64,8 @@ async def _handle_custom_quantity_input_helper(
         add_temporary_message(context, temp_msg)
         return BotConversationState.CUSTOM_QUANTITY_INPUT
 
+    await clear_temporary_messages(context)
+    ctx = get_view_context(context)
     _ = await ctx.active_conversation.delete()
 
     if amount > 10000:  # Условный лимит
@@ -174,7 +172,7 @@ async def _handle_payment_method_helper(
     stars_count = cast(int, ctx.order.quantity)
 
     # Создаем checkout через сервис
-    payment_dto = await payment_service.create_checkout(
+    payment_dto = await payment_service.create_checkout(  # TODO: транзакция должна создаваться в другой момент
         user_id=update.effective_user.id,
         stars_count=stars_count,
         method=cb_data.method_id,

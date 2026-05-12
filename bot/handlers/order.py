@@ -1,89 +1,130 @@
+from typing import cast
+
+from telegram import Update, Message
 from telegram.ext import ContextTypes
 
-from bot.utils.active_conversation_checker import ensure_use_active_conversation_with_callback
+from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.injector import inject
-from core.services.star_price import StarService
-from core.services.payment import PaymentService
+
+from bot.renderers.order import (
+    show_choose_recipient,
+    show_custom_quantity_input,
+    show_large_order_warning,
+    show_payment_methods,
+    show_enter_username,
+    show_user_not_found,
+    show_order_confirmation
+)
+
+from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_callback, FixedQuantityCallback
+from bot.context import add_temporary_message, clear_temporary_messages, get_view_context
+from bot.enums import RecipientMode
 from bot.states import BotConversationState
-from bot.context import get_view_context
-from bot.renderers.order import *
+
+from core.services.payment import PaymentService
+from core.services.star_price import StarService
 from core.services.support import SupportService
 from core.services.telegram import TelegramService
 
 
 @ensure_use_active_conversation_with_callback
-@inject
 async def handle_fixed_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cb_data: FixedQuantityCallback = update.callback_query.data
+    cb_data = cast_callback(FixedQuantityCallback, update.callback_query.data)
     ctx = get_view_context(context)
     ctx.order.quantity = cb_data.amount
 
-    msg = await show_choose_recipient(update)
-    ctx.active_conversation = msg
+    _ = await show_choose_recipient(update, context)
     return BotConversationState.CHOOSE_RECIPIENT
 
 
 @ensure_use_active_conversation_with_callback
-@inject
 async def handle_custom_quantity_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ctx = get_view_context(context)
-    msg = await show_custom_quantity_input(update)
-    ctx.active_conversation = msg
+    _ = await show_custom_quantity_input(update, context)
     return BotConversationState.CUSTOM_QUANTITY_INPUT
 
 
 @inject
-async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                       support_service: SupportService):
-    text = update.message.text
-    if not text.isdigit():
-        await update.message.reply_text("Пожалуйста, введите число.")
+async def _handle_custom_quantity_input_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        support_service: SupportService
+):
+    # noinspection PyUnnecessaryCast
+    user_msg = cast(Message, update.message)
+    text = user_msg.text
+    add_temporary_message(context, user_msg)
+    if text is None or not text.isdigit():
+        temp_msg = await update.message.reply_text("Пожалуйста, введите целое число.")
+        add_temporary_message(context, temp_msg)
         return BotConversationState.CUSTOM_QUANTITY_INPUT
+    await clear_temporary_messages(context)  # TODO: проверить, что происходит с сообщениями
 
     ctx = get_view_context(context)
-    await ctx.active_conversation.delete()
+
 
     amount = int(text)
+
+    if amount < 50:
+        temp_msg = await update.message.reply_text("Пожалуйста, введите целое число больше 50-ти.")
+        add_temporary_message(context, temp_msg)
+        return BotConversationState.CUSTOM_QUANTITY_INPUT
+
+    _ = await ctx.active_conversation.delete()
+
     if amount > 10000:  # Условный лимит
         url = await support_service.get_support_url()
-        msg = await show_large_order_warning(update, url)
-        ctx.active_conversation = msg
+        _ = await show_large_order_warning(update, context, amount, url)
         return BotConversationState.LARGE_ORDER_WARNING
-
     ctx.order.quantity = amount
-    msg = await show_choose_recipient(update)
-    ctx.active_conversation = msg
+
+    _ = await show_choose_recipient(update, context)
     return BotConversationState.CHOOSE_RECIPIENT
 
 
-@ensure_use_active_conversation_with_callback
-@inject
-async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TYPE, star_service: StarService):
-    cb_data: RecipientModeCallback = update.callback_query.data
-    ctx = get_view_context(context)
-    ctx.order.recipient_mode = cb_data.mode
+async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
+    return await _handle_custom_quantity_input_helper(update, context)
 
+
+@inject
+async def _handle_recipient_mode_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        star_service: StarService
+):
+    cb_data = cast_callback(RecipientModeCallback, update.callback_query.data)
+    ctx = get_view_context(context)
+
+    ctx.order.recipient_mode = cb_data.mode
     if cb_data.mode == RecipientMode.SELF:
         ctx.order.target_username = None
-        sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
-        card_price = await star_service.get_order_price(ctx.order.quantity, "card")
-        msg = await show_payment_methods(update, sbp_price, card_price, is_gift=False)
-        ctx.active_conversation = msg
+        # noinspection PyUnnecessaryCast
+        stars_count = cast(int, ctx.order.quantity)
+        sbp_price = await star_service.get_order_price(stars_count, "sbp")
+        card_price = await star_service.get_order_price(stars_count, "card")
+        _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=False)
         return BotConversationState.CHOOSE_PAYMENT_SELF
     else:
-        msg = await show_enter_username(update)
-        ctx.active_conversation = msg
+        _ = await show_enter_username(update, context)
         return BotConversationState.ENTER_GIFT_USERNAME
 
 
+@ensure_use_active_conversation_with_callback
+async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await _handle_recipient_mode_helper(update, context)
+
+
 @inject
-async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_api: TelegramService,
-                               star_service: StarService):
-    username = update.message.text
-    # Транзиентный статус 8a
+async def _handle_gift_username_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        tg_api: TelegramService, star_service: StarService
+):
+    # noinspection PyUnnecessaryCast
+    username = cast(str, update.message.text)
+    _ = await update.message.delete()
 
     ctx = get_view_context(context)
-    await ctx.active_conversation.delete()
+    # Транзиентный статус 8a
+
+    _ = await ctx.active_conversation.delete()
 
     msg = await update.message.reply_text(f"🔎 Ищем пользователя {username}...\n\nЭто займёт пару секунд.")
 
@@ -95,48 +136,65 @@ async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYP
     #       надо добавить задержку в 5 секунд перед первым вызовом .resolve_username(...), либо сделать это
     #       прямо внутри .resolve_username(...)
     is_found = await tg_api.resolve_username(username)
-    await msg.delete()
+
+    _ = await msg.delete()
 
     if not is_found:
-        msg = await show_user_not_found(update, username)
-        ctx.active_conversation = msg
+        _ = await show_user_not_found(update, context, username)
         return BotConversationState.USERNAME_NOT_FOUND
 
     ctx.order.target_username = username
 
-    sbp_price = await star_service.get_order_price(ctx.order.quantity, "sbp")
-    card_price = await star_service.get_order_price(ctx.order.quantity, "card")
+    # noinspection PyUnnecessaryCast
+    stars_count = cast(int, ctx.order.quantity)
+    sbp_price = await star_service.get_order_price(stars_count, "sbp")
+    card_price = await star_service.get_order_price(stars_count, "card")
 
-    msg = await show_payment_methods(update, sbp_price, card_price, is_gift=True, username=username)
-    ctx.active_conversation = msg
+    _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=True, username=username)
+
     return BotConversationState.CHOOSE_PAYMENT_GIFT
 
 
-@ensure_use_active_conversation_with_callback
+async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
+    return await _handle_gift_username_helper(update, context)
+
+
 @inject
-async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService):
-    cb_data: PaymentMethodCallback = update.callback_query.data
+async def _handle_payment_method_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        payment_service: PaymentService
+):
+    cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
     ctx = get_view_context(context)
+
     ctx.order.payment_method_id = cb_data.method_id
+
+    # noinspection PyUnnecessaryCast
+    stars_count = cast(int, ctx.order.quantity)
 
     # Создаем checkout через сервис
     payment_dto = await payment_service.create_checkout(
         user_id=update.effective_user.id,
-        stars_count=ctx.order.quantity,
+        stars_count=stars_count,
         method=cb_data.method_id,
         target_username=ctx.order.target_username
     )
 
-    ctx.order.checkout_transaction_id = payment_dto.transaction_id
+    ctx.order.checkout_transaction_id = str(payment_dto.transaction_id)
     ctx.order.checkout_url = payment_dto.pay_url
 
     is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
-    target_username = ctx.order.target_username if ctx.order.target_username else ""
-    msg = await show_order_confirmation(
-        update,
-        ctx.order.quantity, payment_dto.amount, payment_dto.pay_url,
-        is_gift, target_username
+
+    _ = await show_order_confirmation(
+        update, context,
+        stars_count, payment_dto.amount, payment_dto.pay_url,
+        is_gift, ctx.order.target_username
     )
-    ctx.active_conversation = msg
 
     return BotConversationState.ORDER_CONFIRMATION_GIFT if is_gift else BotConversationState.ORDER_CONFIRMATION_SELF
+
+
+@ensure_use_active_conversation_with_callback
+async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await _handle_payment_method_helper(update, context)

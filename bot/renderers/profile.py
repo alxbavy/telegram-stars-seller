@@ -2,11 +2,13 @@ from telegram import Update, Message
 
 from bot.renderers.base import render_screen
 from bot.keyboards.profile import build_profile_kb, build_order_history_kb
+from bot.utils.active_conversation import autosave_active_conversation
 from core.dto.stats import OrderHistoryPageDTO
 from core.dto.user import UserProfileDTO
 
 
-async def show_profile_page(update: Update, profile_data: UserProfileDTO):
+@autosave_active_conversation
+async def show_profile_page(update: Update, profile_data: UserProfileDTO) -> Message:
     if not isinstance(profile_data, UserProfileDTO):
         profile_data = UserProfileDTO(-1, -1, -1)
 
@@ -19,7 +21,8 @@ async def show_profile_page(update: Update, profile_data: UserProfileDTO):
     return await render_screen(update, text, build_profile_kb(), "profile.jpg")
 
 
-async def show_order_history_page(update: Update, history_dto: OrderHistoryPageDTO):
+@autosave_active_conversation
+async def show_order_history_page(update: Update, history_dto: OrderHistoryPageDTO) -> Message:
     if not history_dto.items:
         orders_text = "<i>У вас пока нет заказов</i>"
     else:
@@ -36,8 +39,7 @@ async def show_order_history_page(update: Update, history_dto: OrderHistoryPageD
     )
 
     return await render_screen(
-        update,
-        text,
+        update, text,
         build_order_history_kb(history_dto.current_page, history_dto.total_pages),
         "history.jpg"
     )

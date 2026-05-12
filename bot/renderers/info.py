@@ -1,8 +1,12 @@
-from telegram import Update
+from telegram import Update, Message
+
 from bot.renderers.base import render_screen
 from bot.keyboards.main import build_info_kb
+from bot.utils.active_conversation import autosave_active_conversation
 
-async def show_info_page(update: Update):
+
+@autosave_active_conversation
+async def show_info_page(update: Update) -> Message:
     text = (
         "👜 <b>Информация</b>\n\n"
         "📄 Пользовательское соглашение:\nhttps://clck.su/ofertalame\n"

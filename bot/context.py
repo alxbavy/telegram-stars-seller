@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from telegram import Message
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from bot.enums import RecipientMode
 
@@ -32,6 +33,8 @@ class ViewContext:
     order: OrderDraft = field(default_factory=OrderDraft)
     lists: ListNavigationState = field(default_factory=ListNavigationState)
     profile_data: UserProfileDTO | None = None
+    temporary_messages: list[tuple[int, int]] = field(default_factory=list)
+
 
 def get_view_context(context: ContextTypes.DEFAULT_TYPE) -> ViewContext:
     """Helper для безопасного получения/создания контекста."""
@@ -39,7 +42,28 @@ def get_view_context(context: ContextTypes.DEFAULT_TYPE) -> ViewContext:
         context.user_data["view_context"] = ViewContext()
     return context.user_data["view_context"]
 
+
 def clear_order_draft(context: ContextTypes.DEFAULT_TYPE):
     """Очистка черновика заказа."""
     ctx = get_view_context(context)
     ctx.order = OrderDraft()
+
+
+def clear_profile_data(context: ContextTypes.DEFAULT_TYPE):
+    ctx = get_view_context(context)
+    ctx.profile_data = None
+
+
+def add_temporary_message(context: ContextTypes.DEFAULT_TYPE, msg: Message):
+    ctx = get_view_context(context)
+    ctx.temporary_messages.append((msg.chat_id, msg.message_id))
+
+
+async def clear_temporary_messages(context: ContextTypes.DEFAULT_TYPE):
+    ctx = get_view_context(context)
+    for chat_id, message_id in ctx.temporary_messages:
+        try:
+            _ = await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except BadRequest:
+            pass
+    ctx.temporary_messages = []

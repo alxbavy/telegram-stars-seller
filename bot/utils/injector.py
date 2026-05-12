@@ -1,14 +1,22 @@
 from functools import wraps
 from inspect import signature
+from typing import cast
+
 from telegram import Update
 from telegram.ext import ContextTypes
+
 from dishka import AsyncContainer
 
+from bot.utils.type_aliases import UpdateWithContextHandler
 
-def inject(func):
+
+def inject[**P,R](func: UpdateWithContextHandler[...,R]):
     @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        container: AsyncContainer = context.bot_data["dishka_container"]
+    async def wrapper(
+            update: Update, context: ContextTypes.DEFAULT_TYPE,
+            *args: P.args, **kwargs: P.kwargs
+    ) -> R:
+        container = cast(AsyncContainer, context.bot_data["dishka_container"])
 
         async with container() as request_container:
             sig = signature(func)

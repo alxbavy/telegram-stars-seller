@@ -1,12 +1,16 @@
-import os
 from typing import cast
 
 from django.conf import settings
-from telegram import Update, InputMediaPhoto, Message
+from telegram import InlineKeyboardMarkup, Update, InputMediaPhoto, Message
 from telegram.constants import ParseMode
 
 
-async def render_screen(update: Update, text: str, reply_markup, photo_name: str = None) -> Message:
+async def render_screen(
+        update: Update,
+        text: str,
+        reply_markup: InlineKeyboardMarkup,
+        photo_name: str | None = None
+) -> Message:
     """
     Эта функция должна использоваться только в личном чате. Если её использовать для обработки Inline сообщений, то
     поведение не гарантированно, и скорее всего возникнет ошибка.

@@ -13,6 +13,11 @@ class ProfileAction(StrEnum):
     REFERRALS = "referrals"
 
 
+class RecipientMode(StrEnum):
+    SELF = "self"
+    GIFT = "gift"
+
+
 class BackDestination(StrEnum):
     MAIN_MENU = "main_menu"
     CHOOSE_QUANTITY = "choose_quantity"

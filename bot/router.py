@@ -2,11 +2,22 @@ from telegram.ext import ConversationHandler, CommandHandler, CallbackQueryHandl
 
 from bot.handlers.back import handle_back_button
 from bot.handlers.profile import handle_profile_menu, handle_history_pagination
-from bot.states import BotConversationState
-from bot.callbacks import *
 from bot.handlers.main import handle_main_menu
-from bot.handlers.order import *
+from bot.handlers.order import (
+    handle_fixed_quantity, handle_custom_quantity_btn, handle_custom_quantity_input,
+    handle_recipient_mode, handle_gift_username,
+    handle_payment_method,
+)
 from bot.handlers.start import start_handler, repeat_order_callback
+from bot.callbacks import (
+    RepeatOrderCallback, MainMenuCallback,
+    ProfileMenuCallback, HistoryPageCallback,
+    FixedQuantityCallback, CustomQuantityCallback,
+    RecipientModeCallback,
+    PaymentMethodCallback,
+    BackCallback,
+)
+from bot.states import BotConversationState
 
 
 def get_conversation_handler() -> ConversationHandler:

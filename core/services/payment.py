@@ -30,7 +30,7 @@ class PaymentService:
             user_id: int,
             stars_count: int,
             method: str,
-            target_username: str = None
+            target_username: str | None = None
     ) -> PaymentDTO:
         """
         Создает заказ, сохраняет транзакцию в БД и генерирует ссылку на оплату.

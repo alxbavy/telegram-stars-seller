@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from bot.callbacks import MainMenuCallback, MainMenuAction, BackCallback, BackDestination
+from bot.callbacks import MainMenuCallback, BackCallback
+from bot.enums import MainMenuAction, BackDestination
 
 
 def build_main_menu_kb() -> InlineKeyboardMarkup:

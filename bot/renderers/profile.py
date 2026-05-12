@@ -1,4 +1,5 @@
-from telegram import Update
+from telegram import Update, Message
+
 from bot.renderers.base import render_screen
 from bot.keyboards.profile import build_profile_kb, build_order_history_kb
 from core.dto.stats import OrderHistoryPageDTO

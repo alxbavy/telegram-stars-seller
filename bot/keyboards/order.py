@@ -2,10 +2,11 @@ from decimal import Decimal
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.callbacks import (
-    FixedQuantityCallback, CustomQuantityCallback, BackCallback, BackDestination,
+    FixedQuantityCallback, CustomQuantityCallback, BackCallback,
     RecipientModeCallback, PaymentMethodCallback, ConfirmOrderCallback, RepeatOrderCallback
 )
-from bot.context import RecipientMode
+from bot.enums import BackDestination, RecipientMode
+
 
 def build_quantity_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([

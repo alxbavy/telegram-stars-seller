@@ -1,6 +1,11 @@
+from typing import cast
 from dataclasses import dataclass
-from bot.context import RecipientMode
-from bot.enums import MainMenuAction, BackDestination, ProfileAction
+
+from bot.enums import MainMenuAction, BackDestination, RecipientMode, ProfileAction
+
+
+def cast_callback[C](callback: type[C], update_callback_query_data: str | None) -> C:
+    return cast(C, update_callback_query_data)
 
 
 @dataclass(frozen=True)

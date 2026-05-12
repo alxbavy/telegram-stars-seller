@@ -1,32 +1,30 @@
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Optional
 
 from telegram import Message
 from telegram.ext import ContextTypes
 
+from bot.enums import RecipientMode
+
 from core.dto.user import UserProfileDTO
 
 
-class RecipientMode(StrEnum):
-    SELF = "self"
-    GIFT = "gift"
-
 @dataclass
 class OrderDraft:
-    quantity: Optional[int] = None
-    recipient_mode: Optional[RecipientMode] = None
-    target_username: Optional[str] = None
-    payment_method_id: Optional[str] = None
-    checkout_transaction_id: Optional[str] = None
-    checkout_url: Optional[str] = None
+    quantity: int | None = None
+    recipient_mode: RecipientMode | None = None
+    target_username: str | None = None
+    payment_method_id: str | None = None
+    checkout_transaction_id: str | None = None
+    checkout_url: str | None = None
+
 
 @dataclass
 class ListNavigationState:
     history_page: int = 1
     referrals_page: int = 1
     referral_purchases_page: int = 1
-    referral_user_id: Optional[int] = None
+    referral_user_id: int | None = None
+
 
 @dataclass
 class ViewContext:

@@ -12,7 +12,7 @@ async def register_user_middleware(update: Update, context: ContextTypes.DEFAULT
     if not tg_user:
         return
 
-    await user_service.register_user(
+    _ = await user_service.register_user(
         telegram_id=tg_user.id,
         username=tg_user.username
     )

@@ -1,6 +1,7 @@
-from decimal import Decimal
+from decimal import Decimal  # noqa
 
 from telegram import Update, Message
+
 from bot.renderers.base import render_screen
 from bot.keyboards.order import *
 

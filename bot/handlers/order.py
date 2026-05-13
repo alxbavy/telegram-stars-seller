@@ -133,11 +133,11 @@ async def _handle_gift_username_helper(
     #       asyncio.sleep(some_time), после чего снова сделать resolve_username(...). Также, для избежания спама
     #       надо добавить задержку в 5 секунд перед первым вызовом .resolve_username(...), либо сделать это
     #       прямо внутри .resolve_username(...)
-    is_found = await tg_api.resolve_username(username)
+    result_username_exists = await tg_api.resolve_username(username)
 
     _ = await msg.delete()
 
-    if not is_found:
+    if not result_username_exists.is_found:
         _ = await show_user_not_found(update, context, username)
         return BotConversationState.USERNAME_NOT_FOUND
 

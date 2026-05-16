@@ -6,7 +6,10 @@ from core.services.user import UserService
 
 
 @inject
-async def register_user_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE, user_service: UserService):
+async def _register_user_middleware_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        user_service: UserService
+) -> None:
     tg_user = update.effective_user
 
     if not tg_user:
@@ -16,3 +19,7 @@ async def register_user_middleware(update: Update, context: ContextTypes.DEFAULT
         telegram_id=tg_user.id,
         username=tg_user.username
     )
+
+
+async def register_user_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _register_user_middleware_helper(update, context)

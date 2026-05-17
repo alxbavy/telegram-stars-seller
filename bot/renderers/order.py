@@ -41,9 +41,19 @@ async def show_enter_username(update: Update) -> Message:
 
 
 @autosave_active_conversation
+async def show_searching_username(update: Update, username: str) -> Message:
+    text = (
+        f"🔎 Ищем пользователя {username}...\n\nЭто займёт несколько секунд.\n\n"
+        f"(Кнопка \"Назад\" во время поиска неактивна)"
+    )
+    return await render_screen(update, text, build_back_to_recipient_kb())
+
+
+@autosave_active_conversation
 async def show_user_not_found(update: Update, user: str) -> Message:
     text = f"❌ <b>Пользователь {user} не найден</b>\n\nПроверь @username и повтори попытку."
-    return await render_screen(update, text, build_user_not_found_kb())
+    # return await render_screen(update, text, build_user_not_found_kb())  # TODO: проверить поведение
+    return await render_screen(update, text, build_back_to_recipient_kb())
 
 
 @autosave_active_conversation

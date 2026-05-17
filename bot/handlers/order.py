@@ -13,6 +13,7 @@ from bot.renderers.order import (
     show_large_order_warning,
     show_payment_methods,
     show_enter_username,
+    show_searching_username,
     show_user_not_found,
     show_order_confirmation
 )
@@ -21,11 +22,11 @@ from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_cal
 from bot.context import add_temporary_message, clear_temporary_messages, get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
+from core.integrations.fragment import FragmentClient
 
 from core.services.payment import PaymentService
 from core.services.star_price import StarService
 from core.services.support import SupportService
-from core.services.telegram import TelegramService
 
 
 @ensure_use_active_conversation_with_callback
@@ -52,22 +53,26 @@ async def _handle_custom_quantity_input_helper(
     # noinspection PyUnnecessaryCast
     user_msg = cast(Message, update.message)
     text = user_msg.text
-    add_temporary_message(context, user_msg)
+    # add_temporary_message(context, user_msg)  # TODO: проверить поведение, затем удалить импорты
+    _ = await user_msg.delete()
+    ctx = get_view_context(context)
     if text is None or not text.isdigit():
-        temp_msg = await update.message.reply_text("Пожалуйста, введите целое число.")
-        add_temporary_message(context, temp_msg)
+        _ = await ctx.active_conversation.edit_text("❌ Пожалуйста, введите целое число больше 50-ти.")
+        # temp_msg = await update.message.reply_text("❌ Пожалуйста, введите целое число больше 50-ти.")
+        # add_temporary_message(context, temp_msg)
         return BotConversationState.CUSTOM_QUANTITY_INPUT
 
     amount = int(text)
 
     if amount < 50:
-        temp_msg = await update.message.reply_text("Пожалуйста, введите целое число больше 50-ти.")
-        add_temporary_message(context, temp_msg)
+        _ = await ctx.active_conversation.edit_text("❌ Пожалуйста, введите целое число больше 50-ти.")
+        # temp_msg = await update.message.reply_text("❌ Пожалуйста, введите целое число больше 50-ти.")
+        # add_temporary_message(context, temp_msg)
         return BotConversationState.CUSTOM_QUANTITY_INPUT
 
-    await clear_temporary_messages(context)
-    ctx = get_view_context(context)
-    _ = await ctx.active_conversation.delete()
+    # await clear_temporary_messages(context)
+    # ctx = get_view_context(context)
+    # _ = await ctx.active_conversation.delete()
 
     if amount > 10000:  # Условный лимит
         url = await support_service.get_support_url()
@@ -121,18 +126,19 @@ async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TY
 @inject
 async def _handle_gift_username_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        tg_api: TelegramService, star_service: StarService
+        fragment_client: FragmentClient, star_service: StarService
 ):
+    user_msg = update.message
     # noinspection PyUnnecessaryCast
-    username = cast(str, update.message.text)
-    _ = await update.message.delete()
-
-    ctx = get_view_context(context)
+    username = cast(str, user_msg.text)
+    _ = await user_msg.delete()
     # Транзиентный статус 8a
 
-    _ = await ctx.active_conversation.delete()
+    ctx = get_view_context(context)
+    # _ = await ctx.active_conversation.delete()  # TODO: проверить поведение
 
-    msg = await update.message.reply_text(f"🔎 Ищем пользователя {username}...\n\nЭто займёт пару секунд.")
+    _ = await show_searching_username(update, context, username)
+    # msg = await update.message.reply_text(f"🔎 Ищем пользователя {username}...\n\nЭто займёт пару секунд.")
 
     # TODO: может быть такое, что при попытке поиска телеграм заставит подождать клиент telethon, прежде чем
     #       можно будет проверить пользователя -> в таком случае пользователю надо бы вывести сообщение, что
@@ -141,13 +147,11 @@ async def _handle_gift_username_helper(
     #       asyncio.sleep(some_time), после чего снова сделать resolve_username(...). Также, для избежания спама
     #       надо добавить задержку в 5 секунд перед первым вызовом .resolve_username(...), либо сделать это
     #       прямо внутри .resolve_username(...)
-    result_username_exists = await tg_api.resolve_username(username)
+    is_found = await fragment_client.resolve_username(username)
 
-    _ = await msg.delete()
-
-    if not result_username_exists.is_found:
+    if not is_found:
         _ = await show_user_not_found(update, context, username)
-        return BotConversationState.USERNAME_NOT_FOUND
+        return BotConversationState.ENTER_GIFT_USERNAME
 
     ctx.order.target_username = username
 

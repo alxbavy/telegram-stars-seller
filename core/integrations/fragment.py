@@ -1,5 +1,4 @@
 import asyncio
-import re
 from typing import final, cast
 from urllib.parse import urljoin
 
@@ -68,7 +67,7 @@ class FragmentClient:
 
         `amount_stars` в текущем виде проверяются во фронте.
 
-        `username` проверяется во время выполнения этой функции, поэтому могут выброситься соответствующие исключения.
+        `username` проверяется во fragment-api, поэтому в случае некорректного username будет ошибка 400.
 
         Может выбросить `FragmentAPIError` (по смыслу, текст ошибок может отличаться)::
 

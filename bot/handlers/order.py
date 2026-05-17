@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.injector import inject
 
+from bot.renderers.main import send_empty_username_alert
 from bot.renderers.order import (
     show_choose_recipient,
     show_custom_quantity_input,
@@ -93,13 +94,20 @@ async def _handle_recipient_mode_helper(
 
     ctx.order.recipient_mode = cb_data.mode
     if cb_data.mode == RecipientMode.SELF:
+
+        if update.effective_user.username is None:
+            _ = await send_empty_username_alert(update)
+            return BotConversationState.CHOOSE_RECIPIENT
+
         ctx.order.target_username = None
         # noinspection PyUnnecessaryCast
         stars_count = cast(int, ctx.order.quantity)
         sbp_price = await star_service.get_order_price(stars_count, "sbp")
         card_price = await star_service.get_order_price(stars_count, "card")
+
         _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=False)
         return BotConversationState.CHOOSE_PAYMENT_SELF
+
     else:
         _ = await show_enter_username(update, context)
         return BotConversationState.ENTER_GIFT_USERNAME

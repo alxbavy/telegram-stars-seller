@@ -13,3 +13,13 @@ async def show_main_menu(update: Update) -> Message:
         "Бери себе или дари друзьям ;)"
     )
     return await render_screen(update, text, build_main_menu_kb(), "main_menu.jpg")
+
+
+async def send_empty_username_alert(update: Update) -> Message:
+    text = (
+        f"⚠️ У вас отсутствует <b>username</b>. Покупка звёзд для себя невозможна без наличия <b>username</b>, но вы "
+        f"можете продолжить пользоваться ботом и купить звёзды кому-нибудь в подарок (по <b>username</b>).\n\n"
+        f"Чтобы сделать себе <b>username</b>, можете сделать следующее:\n"
+        f"⚙️ Настройки -> 👤 Мой аккаунт -> @ Имя пользователя (не путать с Имя)"
+    )
+    return await update.effective_user.send_message(text)

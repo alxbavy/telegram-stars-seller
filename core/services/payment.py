@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import UUID
 
 from core.dto.payment import PaymentDTO
 from core.repositories.transaction import TransactionRepository
@@ -25,7 +26,7 @@ class PaymentService:
         self._star_service = star_service
         self._fragment_client = fragment_client
 
-    async def create_checkout(
+    async def create_transaction(
             self,
             user_id: int,
             stars_count: int,
@@ -38,38 +39,32 @@ class PaymentService:
         if await self._payment_repo.is_maintenance_mode():
             raise Exception("maintenance_mode on True")
 
-        amount = await self._star_service.get_order_price(stars_count, method)
+        price = await self._star_service.get_order_price(stars_count, method)
 
         user_buyer = await self._user_repo.get_by_telegram_id(user_id)
-        transaction = await self._trans_repo.create_transaction(
+        transaction = await self._trans_repo.create_transaction(  # TODO: id приходит из платеги
             user=user_buyer,
-            amount_fiat=amount,
+            amount_fiat=price,
             amount_stars=stars_count,
             payment_method=method,
             target_username=target_username
         )
 
-        pay_url = await self._get_provider_link(transaction.id, amount, method)
+        pay_url = await self._get_provider_link(transaction.id, price, method)
 
         return PaymentDTO(
             transaction_id=transaction.id,
             pay_url=pay_url,
-            amount=amount
+            price=price
         )
-
-    async def _get_provider_link(self, order_id: str, amount: Decimal, method: str) -> str:
-        """
-        Интеграция с API платежных систем.
-        """
-        return f"https://test.link/pay/{order_id}?amount={amount}"
 
     async def confirm_payment(self, transaction_id: str):
         """
         Вызывается при получении Вебхука от платежки.
         """
         # TODO: Должно вызываться не только при получении Вебхука от платежки,
-        # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
-        # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
+        #       но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
+        #       (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
         transaction = await self._trans_repo.get_by_transaction_id(transaction_id)
         if transaction and transaction.status == TransactionStatus.PENDING:
             is_send_success, payload = await self._fragment_client.send_stars(
@@ -86,3 +81,15 @@ class PaymentService:
             return transaction
 
         return None
+
+    async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
+        """
+        `expires_in` - имеет формат HH:MM:SS (%H:%M:%S в datetime)
+        """
+        ...
+
+    async def _get_provider_link(self, order_id: str, amount: Decimal, method: str) -> str:
+        """
+        Интеграция с API платежных систем.
+        """
+        return f"https://test.link/pay/{order_id}?amount={amount}"

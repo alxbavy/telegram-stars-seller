@@ -1,4 +1,5 @@
 from decimal import Decimal  # noqa
+from uuid import UUID  # noqa
 
 from telegram import Update, Message
 
@@ -78,15 +79,18 @@ async def show_payment_methods(
 async def show_order_confirmation(
         update: Update,
         stars: int, price: Decimal,
-        pay_url: str,
+        pay_url: str, transaction_id: UUID, expires_in: str,
         is_gift: bool, target_username: str | None = None
 ) -> Message:
     text = (
         f"☝️ <b>Проверь заказ перед оплатой!</b>\n\nПополним — ⭐ {stars} звёзд\nСтоимость — {price} ₽\n"
-        f"{'Для кого 🎁 — ' + target_username + '\n' if target_username else '\n'}"
-        f"Ссылка на оплату действует 30 минут."
+        f"{'Для кого 🎁 — ' + target_username + '\n' if target_username else ''}"
+        f"🆔 ID заказа: {transaction_id}\n\n"
+        f"Ссылка на оплату действует {expires_in} минут."
     )
     back_dest = BackDestination.CHOOSE_PAYMENT_GIFT if is_gift else BackDestination.CHOOSE_PAYMENT_SELF
     photo = "order_confirmation_gift.jpg" if is_gift else "order_confirmation_self.jpg"
+
+    # TODO: по проведению оплаты сообщение должно поменяться либо на успех перевода звёзд, либо об ошибке
 
     return await render_screen(update, text, build_confirmation_kb(pay_url, back_dest, not is_gift), photo)

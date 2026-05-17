@@ -1,4 +1,6 @@
 from typing import cast
+from datetime import datetime, timedelta
+from math import ceil
 
 from telegram import Update, Message
 from telegram.ext import ContextTypes
@@ -19,6 +21,7 @@ from bot.renderers.order import (
 )
 
 from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_callback, FixedQuantityCallback
+from bot.cleanup import clear_specific_transaction
 from bot.context import add_temporary_message, clear_temporary_messages, get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
@@ -183,8 +186,7 @@ async def _handle_payment_method_helper(
     # noinspection PyUnnecessaryCast
     stars_count = cast(int, ctx.order.quantity)
 
-    # Создаем checkout через сервис
-    payment_dto = await payment_service.create_checkout(  # TODO: транзакция должна создаваться в другой момент
+    payment_dto = await payment_service.create_transaction(
         user_id=update.effective_user.id,
         stars_count=stars_count,
         method=cb_data.method_id,
@@ -195,10 +197,21 @@ async def _handle_payment_method_helper(
     ctx.order.checkout_url = payment_dto.pay_url
 
     is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
+    expires_in = datetime.strptime(payment_dto.expires_in, "%H:%M:%S")
+    expires_in_td = timedelta(hours=expires_in.hour, minutes=expires_in.minute, seconds=expires_in.second)
+    expires_in_minutes = str(ceil(expires_in_td.total_seconds() / 60))
+
+    expires_in_for_job = expires_in + timedelta(minutes=10)
+    expires_in_for_job = f"{expires_in_for_job.hour:02}:{expires_in_for_job.minute:02}:{expires_in_for_job.second:02}"
+    _ = context.job_queue.run_once(
+        clear_specific_transaction,
+        when = expires_in,
+        data = (payment_dto.transaction_id, expires_in_for_job)
+    )
 
     _ = await show_order_confirmation(
         update, context,
-        stars_count, payment_dto.amount, payment_dto.pay_url,
+        stars_count, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,
         is_gift, ctx.order.target_username
     )
 

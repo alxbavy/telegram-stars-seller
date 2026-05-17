@@ -8,3 +8,4 @@ from telegram.ext import ContextTypes
 type AsyncCallable[**P,R] = Callable[P, Awaitable[R]]
 type UpdateWithContextHandler[**P,R] = AsyncCallable[Concatenate[Update, ContextTypes.DEFAULT_TYPE, P], R]
 type UpdateHandler[**P,R] = AsyncCallable[Concatenate[Update, P], R]
+type ContextHandler[**P,R] = AsyncCallable[Concatenate[ContextTypes.DEFAULT_TYPE, P], R]

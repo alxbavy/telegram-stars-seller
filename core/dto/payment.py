@@ -13,6 +13,7 @@ class PaymentDTO:
     expires_in: str
 
 
-class PricingDTO(NamedTuple):
+@dataclass(frozen=True)
+class PricingDTO:
     settings: GlobalSettings
     exchange_rate: ExchangeRate

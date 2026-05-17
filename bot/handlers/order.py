@@ -1,3 +1,4 @@
+import re
 from typing import cast
 from datetime import datetime, timedelta
 from math import ceil
@@ -135,9 +136,18 @@ async def _handle_gift_username_helper(
     # noinspection PyUnnecessaryCast
     username = cast(str, user_msg.text)
     _ = await user_msg.delete()
-    # Транзиентный статус 8a
 
     ctx = get_view_context(context)
+    username_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
+    if not username_pattern.search(username):
+        text = (
+            "❌ Неправильный формат username. Можете попробовать ввести снова.\n\n"
+            "(Правильный формат username можно посмотреть в настройках, где устанавливается ваш username)"
+        )
+        _ = ctx.active_conversation.edit_text(text)
+        return BotConversationState.ENTER_GIFT_USERNAME
+    # Транзиентный статус 8a
+
     # _ = await ctx.active_conversation.delete()  # TODO: проверить поведение
 
     _ = await show_searching_username(update, context, username)

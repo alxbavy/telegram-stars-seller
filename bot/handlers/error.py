@@ -18,4 +18,6 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
         )
         support_url = await support_service.get_support_url()
         _ = await update.effective_message.reply_text(text, reply_markup=build_error_kb(support_url))
+        return
+
     raise context.error

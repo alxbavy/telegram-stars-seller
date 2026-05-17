@@ -114,10 +114,6 @@ class FragmentClient:
         """
         await self._ensure_authenticated()
 
-        username_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
-        if not username_pattern.search(username):
-            raise FragmentAPIError("Неправильный формат username")
-
         headers = await self._get_headers("GET")
 
         await asyncio.sleep(2)

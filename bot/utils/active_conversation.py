@@ -30,7 +30,6 @@ def ensure_use_active_conversation_with_callback[**P,R](func: UpdateWithContextH
     return wrapper
 
 
-# TODO: применить декоратор к функциям из renderers, и убрать повсеместные сохранения сообщений в контекст
 def autosave_active_conversation[**P](func: UpdateHandler[P, Message]):
     """
     После выполнения декорируемой функции её возвращаемое значение будет сохранено в
@@ -47,6 +46,28 @@ def autosave_active_conversation[**P](func: UpdateHandler[P, Message]):
     ) -> Message:
         ctx = get_view_context(context)
         msg = await func(update, *args, **kwargs)
+        ctx.active_conversation = msg
+        return msg
+
+    return wrapper
+
+
+def autosave_active_conversation_with_context[**P](func: UpdateWithContextHandler[P, Message]):
+    """
+    После выполнения декорируемой функции её возвращаемое значение будет сохранено в
+    соответствующий get_view_context().active_conversation.
+
+    Декорируемая функция после применения декоратора будет иметь в своих аргументах::
+
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+    """
+    @wraps(func)
+    async def wrapper(
+            update: Update, context: ContextTypes.DEFAULT_TYPE,
+            *args: P.args, **kwargs: P.kwargs
+    ) -> Message:
+        ctx = get_view_context(context)
+        msg = await func(update, context, *args, **kwargs)
         ctx.active_conversation = msg
         return msg
 

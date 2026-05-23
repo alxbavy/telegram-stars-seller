@@ -5,9 +5,9 @@ from core.models import GlobalSettings, ExchangeRate, PaymentMethod
 
 
 class PaymentRepository:
-    model_settings = GlobalSettings
-    model_exchange_rate = ExchangeRate
-    model_payment_method = PaymentMethod
+    model_settings: type[GlobalSettings] = GlobalSettings
+    model_exchange_rate: type[ExchangeRate] = ExchangeRate
+    model_payment_method: type[PaymentMethod] = PaymentMethod
 
     async def get_pricing_data(self) -> PricingDTO:
         """Объединение двух SQL-запросов в один поток для производительности."""
@@ -20,22 +20,34 @@ class PaymentRepository:
             self,
             payment_method: str,
             is_check_is_active: bool = True,
-            is_active_value: bool = True
+            is_active_value: bool = True,
+            is_select_api: bool = True
     ) -> PaymentMethod | None:
         query = self.model_payment_method.objects.filter(name=payment_method)
+
         if is_check_is_active:
             query = query.filter(is_active=is_active_value)
+
+        if is_select_api:
+            query = query.select_related("api")
+
         return await query.afirst()
 
     async def get_many_by(
             self,
             is_check_is_active: bool = True,
-            is_active_value: bool = True
+            is_active_value: bool = True,
+            is_select_api: bool = True
     ) -> list[PaymentMethod]:
-        """Возвращает активные методы оплаты для отображения в боте."""
+        """По умолчанию возвращает активные методы оплаты для отображения в боте."""
         query = self.model_payment_method.objects
+
         if is_check_is_active:
             query = query.filter(is_active=is_active_value)
+
+        if is_select_api:
+            query = query.select_related("api")
+
         return [method async for method in query.all()]
 
     async def update_current_usd_rate(self, current_usd_rate: Decimal) -> None:

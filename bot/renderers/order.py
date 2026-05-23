@@ -1,17 +1,33 @@
-from decimal import Decimal  # noqa
-from uuid import UUID  # noqa
+from decimal import Decimal
+from uuid import UUID
 
 from telegram import Update, Message
 
 from bot.renderers.base import render_screen
-from bot.keyboards.order import *
-from bot.utils.active_conversation import autosave_active_conversation
+from bot.keyboards.order import (
+    build_quantity_kb,
+    build_back_to_quantity_kb,
+    build_large_order_kb,
+    build_recipient_kb,
+    build_back_to_recipient_kb,
+    build_payment_methods_kb_static,
+    build_payment_methods_kb_dynamic,
+    build_confirmation_kb
+)
+from bot.utils.active_conversation import autosave_active_conversation, autosave_active_conversation_with_context
+from bot.utils.injector import inject_without_context
+from bot.enums import BackDestination
+
+from core.services.payment import PaymentService
+from core.services.star_price import StarService
 
 
 @autosave_active_conversation
 async def show_choose_quantity(update: Update) -> Message:
-    text = ("🧠 <b>Сколько покупаем звёзд?</b>\n\nПоказываем самые популярные варианты.\n"
-            "Можно ввести своё количество ;)")
+    text = (
+        "🧠 <b>Сколько покупаем звёзд?</b>\n\nПоказываем самые популярные варианты.\n"
+        "Можно ввести своё количество ;)"
+    )
     return await render_screen(update, text, build_quantity_kb(), "choose_quantity.jpg")
 
 
@@ -23,9 +39,11 @@ async def show_custom_quantity_input(update: Update) -> Message:
 
 @autosave_active_conversation
 async def show_large_order_warning(update: Update, quantity: int, support_url: str) -> Message:
-    text = (f"⚠️ <b>Заказ в размере {quantity} звёзд нужно согласовать!</b>\n\n"
-            f"Большие заказы мы не обрабатываем автоматически.\n"
-            "Напиши в поддержку, чтобы оформить пополнение.")
+    text = (
+        f"⚠️ <b>Заказ в размере {quantity} звёзд нужно согласовать!</b>\n\n"
+        f"Большие заказы мы не обрабатываем автоматически.\n"
+        "Напиши в поддержку, чтобы оформить пополнение."
+    )
     return await render_screen(update, text, build_large_order_kb(support_url))
 
 
@@ -58,7 +76,7 @@ async def show_user_not_found(update: Update, user: str) -> Message:
 
 
 @autosave_active_conversation
-async def show_payment_methods(
+async def show_payment_methods_static(
         update: Update,
         sbp_price: Decimal, card_price: Decimal,
         is_gift: bool, username: str | None = None
@@ -72,7 +90,27 @@ async def show_payment_methods(
         back_dest = BackDestination.CHOOSE_RECIPIENT
         photo = "payment_method_self.jpg"
 
-    return await render_screen(update, text, build_payment_methods_kb(sbp_price, card_price, back_dest), photo)
+    return await render_screen(update, text, build_payment_methods_kb_static(sbp_price, card_price, back_dest), photo)
+
+
+@autosave_active_conversation_with_context
+@inject_without_context
+async def show_payment_methods_dynamic(
+        update: Update,
+        stars_count: int,
+        is_gift: bool, username: str | None = None,
+        *, payment_service: PaymentService, star_service: StarService
+) -> Message:
+    if is_gift:
+        text = f"Пополним звёзды для {username}.\n\n💳 <b>Выбери способ оплаты:</b>"
+        back_dest = BackDestination.ENTER_GIFT_USERNAME
+        photo = "payment_method_gift.jpg"
+    else:
+        text = "💸 <b>Теперь выбери способ оплаты:</b>"
+        back_dest = BackDestination.CHOOSE_RECIPIENT
+        photo = "payment_method_self.jpg"
+
+    return await render_screen(update, text, await build_payment_methods_kb_dynamic(stars_count, payment_service, star_service, back_dest), photo)
 
 
 @autosave_active_conversation

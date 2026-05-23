@@ -10,21 +10,18 @@ from bot.renderers.order import (
     show_custom_quantity_input,
     show_choose_recipient,
     show_enter_username,
-    show_payment_methods
+    show_payment_methods_dynamic
 )
 from bot.renderers.profile import show_profile_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.handlers_registry import build_async_handlers_register
-from bot.utils.injector import inject
 from bot.utils.type_aliases import UpdateWithContextHandler
 
 from bot.callbacks import BackCallback, cast_callback
 from bot.context import clear_profile_data, clear_temporary_messages, get_view_context
 from bot.enums import BackDestination
 from bot.states import BotConversationState
-
-from core.services.star_price import StarService
 
 
 back_destination_registry: dict[BackDestination, UpdateWithContextHandler[..., BotConversationState]] = {}
@@ -62,11 +59,7 @@ async def _handle_destination_enter_username(update: Update, context: ContextTyp
 
 
 @register(BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT)
-@inject
-async def _handle_destination_choose_payment(
-        update: Update, context: ContextTypes.DEFAULT_TYPE,
-        star_service: StarService
-):
+async def _handle_destination_choose_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # При возврате на экран оплаты нам нужно заново рассчитать цены,
     # так как мы не храним их в контексте (цены могут измениться).
     # Берем количество звезд из черновика.
@@ -74,14 +67,12 @@ async def _handle_destination_choose_payment(
 
     # noinspection PyUnnecessaryCast
     stars_count = cast(int, ctx.order.quantity)
-    sbp_price = await star_service.get_order_price(stars_count, "sbp")
-    card_price = await star_service.get_order_price(stars_count, "card")
 
     cb_data = cast_callback(BackCallback, update.callback_query.data)
     is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)
     username = ctx.order.target_username if is_gift else None
 
-    _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=is_gift, username=username)
+    _ = await show_payment_methods_dynamic(update, context, stars_count, is_gift=is_gift, username=username)
 
     return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
 

@@ -6,15 +6,18 @@ from math import ceil
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 
+from bot.keyboards.error import KeyboardMethodError
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.injector import inject
+
+from bot.handlers.start import running_users
 
 from bot.renderers.main import send_empty_username_alert
 from bot.renderers.order import (
     show_choose_recipient,
     show_custom_quantity_input,
+    show_payment_methods_dynamic,
     show_large_order_warning,
-    show_payment_methods,
     show_enter_username,
     show_searching_username,
     show_user_not_found,
@@ -23,13 +26,12 @@ from bot.renderers.order import (
 
 from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_callback, FixedQuantityCallback
 from bot.cleanup import clear_specific_transaction
-from bot.context import add_temporary_message, clear_temporary_messages, get_view_context
+from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
 from core.integrations.fragment import FragmentClient
 
 from core.services.payment import PaymentService
-from core.services.star_price import StarService
 from core.services.support import SupportService
 
 
@@ -54,38 +56,38 @@ async def _handle_custom_quantity_input_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         support_service: SupportService
 ):
-    # noinspection PyUnnecessaryCast
-    user_msg = cast(Message, update.message)
-    text = user_msg.text
-    # add_temporary_message(context, user_msg)  # TODO: проверить поведение, затем удалить импорты
-    _ = await user_msg.delete()
-    ctx = get_view_context(context)
-    if text is None or not text.isdigit():
-        _ = await ctx.active_conversation.edit_text("❌ Пожалуйста, введите целое число больше 50-ти.")
-        # temp_msg = await update.message.reply_text("❌ Пожалуйста, введите целое число больше 50-ти.")
-        # add_temporary_message(context, temp_msg)
+    user_id = update.effective_user.id
+    if user_id in running_users:
         return BotConversationState.CUSTOM_QUANTITY_INPUT
 
-    amount = int(text)
+    running_users.add(user_id)
 
-    if amount < 50:
-        _ = await ctx.active_conversation.edit_text("❌ Пожалуйста, введите целое число больше 50-ти.")
-        # temp_msg = await update.message.reply_text("❌ Пожалуйста, введите целое число больше 50-ти.")
-        # add_temporary_message(context, temp_msg)
-        return BotConversationState.CUSTOM_QUANTITY_INPUT
+    try:
+        # noinspection PyUnnecessaryCast
+        user_msg = cast(Message, update.message)
 
-    # await clear_temporary_messages(context)
-    # ctx = get_view_context(context)
-    # _ = await ctx.active_conversation.delete()
+        text = user_msg.text
+        if text is None or not text.isdigit():
+            return BotConversationState.CUSTOM_QUANTITY_INPUT
 
-    if amount > 10000:  # Условный лимит
-        url = await support_service.get_support_url()
-        _ = await show_large_order_warning(update, context, amount, url)
-        return BotConversationState.LARGE_ORDER_WARNING
-    ctx.order.quantity = amount
+        amount = int(text)
 
-    _ = await show_choose_recipient(update, context)
-    return BotConversationState.CHOOSE_RECIPIENT
+        if amount < 50:
+            return BotConversationState.CUSTOM_QUANTITY_INPUT
+
+        if amount > 10000:  # Условный лимит
+            url = await support_service.get_support_url()
+            _ = await show_large_order_warning(update, context, amount, url)
+            return BotConversationState.LARGE_ORDER_WARNING
+
+        ctx = get_view_context(context)
+        ctx.order.quantity = amount
+
+        _ = await show_choose_recipient(update, context)
+        return BotConversationState.CHOOSE_RECIPIENT
+
+    finally:
+        running_users.discard(user_id)
 
 
 async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,11 +95,7 @@ async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEF
     return await _handle_custom_quantity_input_helper(update, context)
 
 
-@inject
-async def _handle_recipient_mode_helper(
-        update: Update, context: ContextTypes.DEFAULT_TYPE,
-        star_service: StarService
-):
+async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cb_data = cast_callback(RecipientModeCallback, update.callback_query.data)
     ctx = get_view_context(context)
 
@@ -108,13 +106,11 @@ async def _handle_recipient_mode_helper(
             _ = await send_empty_username_alert(update)
             return BotConversationState.CHOOSE_RECIPIENT
 
-        ctx.order.target_username = None
+        ctx.order.target_username = ""
+
         # noinspection PyUnnecessaryCast
         stars_count = cast(int, ctx.order.quantity)
-        sbp_price = await star_service.get_order_price(stars_count, "sbp")
-        card_price = await star_service.get_order_price(stars_count, "card")
-
-        _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=False)
+        _ = await show_payment_methods_dynamic(update, context, stars_count, is_gift=False)
         return BotConversationState.CHOOSE_PAYMENT_SELF
 
     else:
@@ -130,52 +126,43 @@ async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TY
 @inject
 async def _handle_gift_username_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        fragment_client: FragmentClient, star_service: StarService
+        fragment_client: FragmentClient
 ):
-    user_msg = update.message
-    # noinspection PyUnnecessaryCast
-    username = cast(str, user_msg.text)
-    _ = await user_msg.delete()
-
-    ctx = get_view_context(context)
-    username_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
-    if not username_pattern.search(username):
-        text = (
-            "❌ Неправильный формат username. Можете попробовать ввести снова.\n\n"
-            "(Правильный формат username можно посмотреть в настройках, где устанавливается ваш username)"
-        )
-        _ = ctx.active_conversation.edit_text(text)
-        return BotConversationState.ENTER_GIFT_USERNAME
-    # Транзиентный статус 8a
-
-    # _ = await ctx.active_conversation.delete()  # TODO: проверить поведение
-
-    _ = await show_searching_username(update, context, username)
-    # msg = await update.message.reply_text(f"🔎 Ищем пользователя {username}...\n\nЭто займёт пару секунд.")
-
-    # TODO: может быть такое, что при попытке поиска телеграм заставит подождать клиент telethon, прежде чем
-    #       можно будет проверить пользователя -> в таком случае пользователю надо бы вывести сообщение, что
-    #       нужно подождать Х времени -> получается, .resolve_username(...) помимо bool должен
-    #       возвращать текст результата, флаг is_retry и время сна, чтобы отправить msg пользователю и сделать
-    #       asyncio.sleep(some_time), после чего снова сделать resolve_username(...). Также, для избежания спама
-    #       надо добавить задержку в 5 секунд перед первым вызовом .resolve_username(...), либо сделать это
-    #       прямо внутри .resolve_username(...)
-    is_found = await fragment_client.resolve_username(username)
-
-    if not is_found:
-        _ = await show_user_not_found(update, context, username)
+    user_id = update.effective_user.id
+    if user_id in running_users:
         return BotConversationState.ENTER_GIFT_USERNAME
 
-    ctx.order.target_username = username
+    running_users.add(user_id)
 
-    # noinspection PyUnnecessaryCast
-    stars_count = cast(int, ctx.order.quantity)
-    sbp_price = await star_service.get_order_price(stars_count, "sbp")
-    card_price = await star_service.get_order_price(stars_count, "card")
+    try:
+        user_msg = update.message
 
-    _ = await show_payment_methods(update, context, sbp_price, card_price, is_gift=True, username=username)
+        # noinspection PyUnnecessaryCast
+        username = cast(str, user_msg.text)
+        username_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
+        if not username_pattern.search(username):
+            return BotConversationState.ENTER_GIFT_USERNAME
 
-    return BotConversationState.CHOOSE_PAYMENT_GIFT
+        msg_searching = await show_searching_username(update, context, username)
+
+        is_found = await fragment_client.resolve_username(username)
+
+        _ = await msg_searching.delete()
+
+        if not is_found:
+            _ = await show_user_not_found(update, context, username)
+            return BotConversationState.ENTER_GIFT_USERNAME
+
+        ctx = get_view_context(context)
+        ctx.order.target_username = username
+
+        # noinspection PyUnnecessaryCast
+        stars_count = cast(int, ctx.order.quantity)
+        _ = await show_payment_methods_dynamic(update, context, stars_count, is_gift=True, username=username)
+        return BotConversationState.CHOOSE_PAYMENT_GIFT
+
+    finally:
+        running_users.discard(user_id)
 
 
 async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -188,6 +175,9 @@ async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         payment_service: PaymentService
 ):
+    # Если maintenance_mode, выбросится исключение, которое поймается в error_handler
+    await payment_service.ensure_no_maintenance_mode()
+
     cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
     ctx = get_view_context(context)
 
@@ -196,7 +186,7 @@ async def _handle_payment_method_helper(
     # noinspection PyUnnecessaryCast
     stars_count = cast(int, ctx.order.quantity)
 
-    payment_dto = await payment_service.create_transaction(
+    payment_dto = await payment_service.create_payment_and_transaction(
         user_id=update.effective_user.id,
         stars_count=stars_count,
         method=cb_data.method_id,

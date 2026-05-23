@@ -1,7 +1,8 @@
 from decimal import Decimal
+from typing import final
 from uuid import UUID
 
-from core.dto.payment import PaymentDTO
+from core.dto.payment import PaymentDTO, PaymentMethodDTO
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 from core.repositories.payment import PaymentRepository
@@ -13,6 +14,8 @@ from core.integrations.fragment import FragmentClient
 class MaintenanceModeException(Exception):
     """Исключение для технического перерыва."""
 
+
+@final
 class PaymentService:
     def __init__(
             self,
@@ -28,7 +31,22 @@ class PaymentService:
         self._star_service = star_service
         self._fragment_client = fragment_client
 
-    async def create_transaction(
+    async def ensure_no_maintenance_mode(self) -> None:
+        if await self._payment_repo.is_maintenance_mode():
+            raise MaintenanceModeException("maintenance_mode on True")
+
+    async def get_active_payment_methods(self) -> tuple[PaymentMethodDTO, ...]:
+        return tuple(
+            PaymentMethodDTO(
+                api_name=method.api.name,
+                name=method.name,
+                external_id=method.external_id,
+                commission_percent=method.commission_percent
+            )
+            for method in await self._payment_repo.get_many_by()
+        )
+
+    async def create_payment_and_transaction(
             self,
             user_id: int,
             stars_count: int,
@@ -38,8 +56,6 @@ class PaymentService:
         """
         Создает заказ, сохраняет транзакцию в БД и генерирует ссылку на оплату.
         """
-        if await self._payment_repo.is_maintenance_mode():
-            raise Exception("maintenance_mode on True")
 
         price = await self._star_service.get_order_price(stars_count, method)
 

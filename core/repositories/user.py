@@ -8,7 +8,7 @@ from core.models import TelegramUser
 
 
 class UserRepository:
-    model = TelegramUser
+    model: type[TelegramUser] = TelegramUser
 
     async def create_telegram_user(self, telegram_id: int, username: str) -> TelegramUser:
         return await self.model.objects.acreate(telegram_id=telegram_id, username=username)
@@ -63,4 +63,4 @@ class UserRepository:
 
     @staticmethod
     async def delete_user(user: TelegramUser) -> None:
-        await user.adelete()
+        _ = await user.adelete()

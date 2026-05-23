@@ -10,6 +10,8 @@ from core.domain.enums import TransactionStatus
 from core.services.star_price import StarService
 from core.integrations.fragment import FragmentClient
 
+class MaintenanceModeException(Exception):
+    """Исключение для технического перерыва."""
 
 class PaymentService:
     def __init__(

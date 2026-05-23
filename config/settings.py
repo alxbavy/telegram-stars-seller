@@ -43,6 +43,11 @@ TON_WALLET_VERSION = env('TON_WALLET_VERSION')
 PLATEGA_MERCHANT_ID = env('PLATEGA_MERCHANT_ID')
 PLATEGA_SECRET = env('PLATEGA_SECRET')
 
+
+import django_stubs_ext
+django_stubs_ext.monkeypatch()
+
+
 # Logging
 
 

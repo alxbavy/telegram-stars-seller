@@ -39,6 +39,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
                 CallbackQueryHandler(handle_main_menu, pattern=MainMenuCallback)
             ],
             BotConversationState.INFO: [],
+            BotConversationState.SUPPORT: [],
             BotConversationState.PROFILE: [
                 CallbackQueryHandler(handle_profile_menu, pattern=ProfileMenuCallback)
             ],
@@ -52,6 +53,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
             BotConversationState.CUSTOM_QUANTITY_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_quantity_input)
             ],
+            BotConversationState.LARGE_ORDER_WARNING: [],
             BotConversationState.CHOOSE_RECIPIENT: [
                 CallbackQueryHandler(handle_recipient_mode, pattern=RecipientModeCallback)
             ],

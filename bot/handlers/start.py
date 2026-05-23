@@ -8,17 +8,26 @@ from bot.context import clear_order_draft
 from bot.states import BotConversationState
 
 
+running_users: set[int] = set()
+
+
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_order_draft(context)
+    user_id = update.effective_user.id
+    if user_id in running_users:
+        return None
 
-    if update.effective_user.username is None:
-        _ = await send_empty_username_alert(update)
+    running_users.add(user_id)
 
-    if update.message:
-        _ = await update.message.delete()
+    try:
+        clear_order_draft(context)
 
-    _ = await show_main_menu(update, context)
-    return BotConversationState.MAIN_MENU
+        if update.effective_user.username is None:
+            _ = await send_empty_username_alert(update)
+
+        _ = await show_main_menu(update, context)
+        return BotConversationState.MAIN_MENU
+    finally:
+        running_users.discard(user_id)
 
 
 async def repeat_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -1,5 +1,8 @@
+from typing import cast
+
 from core.domain.enums import TransactionStatus
 from core.dto.stats import OrderHistoryPageDTO, OrderHistoryItemDTO
+from core.models import Transaction
 from core.repositories.transaction import TransactionRepository
 
 
@@ -14,12 +17,12 @@ class StatsService:
         if page < 1:
             raise ValueError("page must be greater than 1")
 
-        transactions = await self._trans_repo.get_many_by(
+        transactions = cast(list[Transaction], await self._trans_repo.get_many_by(
             telegram_id=user_id,
             status=TransactionStatus.SUCCESS,
             start_idx=per_page * (page - 1),
             stop_idx=per_page * page,
-        )
+        ))
 
         if not transactions:
             return OrderHistoryPageDTO(
@@ -37,11 +40,11 @@ class StatsService:
             for transaction in transactions
         ]
 
-        total_transactions_count: int = await self._trans_repo.get_many_by(
+        total_transactions_count = cast(int, await self._trans_repo.get_many_by(
             telegram_id=user_id,
             status=TransactionStatus.SUCCESS,
             is_count_only=True,
-        )
+        ))
         total_pages: int = total_transactions_count // per_page + 1
 
         return OrderHistoryPageDTO(

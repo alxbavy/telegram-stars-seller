@@ -13,8 +13,8 @@ from core.dto.user import UserProfileDTO
 class OrderDraft:
     quantity: int | None = None
     recipient_mode: RecipientMode | None = None
-    target_username: str | None = None
-    payment_method_id: str | None = None
+    target_username: str = ""
+    payment_method: str | None = None
     checkout_transaction_id: str | None = None
     checkout_url: str | None = None
 

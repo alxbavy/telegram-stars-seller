@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import cast
 from dataclasses import dataclass
 
@@ -35,7 +36,11 @@ class RecipientModeCallback:
 
 @dataclass(frozen=True)
 class PaymentMethodCallback:
-    method_id: str
+    method_api: str
+    method: str
+    method_external_id: str
+    price: Decimal | None
+    commission_percent: Decimal | None
 
 
 @dataclass(frozen=True)

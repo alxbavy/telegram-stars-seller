@@ -120,11 +120,17 @@ async def show_order_confirmation(
         pay_url: str, transaction_id: UUID, expires_in: str,
         is_gift: bool, target_username: str | None = None
 ) -> Message:
+    if expires_in == "1" or (len(expires_in) >= 2 and expires_in[-2] != "1" and expires_in[-1] == "1"):
+        ending = "у"
+    elif expires_in in ["2", "3", "4"] or (len(expires_in) >= 2 and expires_in[-2] != "1" and expires_in[-1] in ["2", "3", "4"]):
+        ending = "ы"
+    else:
+        ending = ""
     text = (
-        f"☝️ <b>Проверь заказ перед оплатой!</b>\n\nПополним — ⭐ {stars} звёзд\nСтоимость — {price} ₽\n"
+        f"☝️ <b>Проверь заказ перед оплатой!</b>\n\nПополним — ⭐ {stars} звёзд\nСтоимость — {price:.2f} ₽\n"
         f"{'Для кого 🎁 — ' + target_username + '\n' if target_username else ''}"
         f"🆔 ID заказа: {transaction_id}\n\n"
-        f"Ссылка на оплату действует {expires_in} минут."
+        f"Ссылка на оплату действует {expires_in} минут{ending}."
     )
     back_dest = BackDestination.CHOOSE_PAYMENT_GIFT if is_gift else BackDestination.CHOOSE_PAYMENT_SELF
     photo = "order_confirmation_gift.jpg" if is_gift else "order_confirmation_self.jpg"

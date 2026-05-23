@@ -2,6 +2,7 @@ from django.db import models
 from solo.models import SingletonModel
 
 import uuid
+from core.domain.enums import TransactionStatus, TransactionType
 
 
 class TelegramUser(models.Model):
@@ -30,12 +31,6 @@ class TelegramUser(models.Model):
 class Transaction(models.Model):
     objects = models.Manager()
 
-    STATUS_CHOICES = [
-        ("PENDING", "ОЖИДАЕТ"),
-        ("SUCCESS", "УСПЕШНО"),
-        ("FAILED", "ОШИБКА"),
-    ]
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True, editable=False, verbose_name="ID платежа")
     telegram_user = models.ForeignKey(
         TelegramUser,
@@ -46,7 +41,7 @@ class Transaction(models.Model):
     amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
     amount_stars = models.IntegerField(verbose_name="Количество звезд")
     target_username = models.CharField(max_length=255, null=True, blank=True, verbose_name="Кому")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING", verbose_name="Статус")
+    status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
@@ -76,17 +71,13 @@ class Transaction(models.Model):
 class TransactionMetadata(models.Model):
     objects = models.Manager()
 
-    TYPES_CHOICES =[
-        ("PURCHASE", "Покупка"),
-    ]
-
     transaction = models.OneToOneField(
         Transaction,
         on_delete=models.CASCADE,
         related_name="metadata_info",
         verbose_name="Транзакция"
     )
-    type = models.CharField(max_length=50, choices=TYPES_CHOICES, verbose_name="Тип")
+    type = models.CharField(max_length=50, choices=TransactionType.to_choices(), verbose_name="Тип")
     payment_method = models.CharField(max_length=50, verbose_name="Способ оплаты")
     payload = models.JSONField(default=dict, blank=True, verbose_name="Доп. данные (JSON)")
 

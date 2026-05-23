@@ -1,5 +1,5 @@
 import asyncio
-from typing import final, cast
+from typing import NotRequired, TypedDict, final, cast
 from urllib.parse import urljoin
 
 import httpx
@@ -13,6 +13,26 @@ logger = logging.getLogger(__name__)
 
 class FragmentAPIError(Exception):
     """Базовая ошибка клиента Fragment API."""
+
+
+class Sender(TypedDict):
+    phone_number: str
+    name: NotRequired[str | None]
+
+
+class FragmentResponse(TypedDict):
+    success: bool | None
+    id: NotRequired[str]
+    receiver: str
+    goods_quantity: NotRequired[int | None]
+    sender: Sender | None
+    ton_price: str | None
+    fee_ton: str | None
+    ref_id: str | None
+    status: str
+    type: str
+    error: object
+    created_at: str
 
 
 @final
@@ -54,6 +74,8 @@ class FragmentClient:
         Returns:
             если пользователь найден - `True`, иначе `False`
         """
+        import asyncio
+        await asyncio.sleep(5)
         if username == "True":  # TODO: для дебага - убрать в релизе
             return True
         else:
@@ -61,7 +83,7 @@ class FragmentClient:
         username = username.lstrip("@")
         return await self._find_user_by_username(username)
 
-    async def send_stars(self, username: str, amount_stars: int) -> dict[str, object]:
+    async def send_stars(self, username: str, amount_stars: int) -> FragmentResponse:
         """
         Принимает `username` и `amount_stars`.
 
@@ -79,6 +101,18 @@ class FragmentClient:
 
         Ошибки `FragmentAPIError` следует отлавливать для отображения информации об ошибках пользователю.
         """
+        return {
+            "success": True,
+            "receiver": "dummy_receiver",
+            "sender": {"phone_number": "dummy_phone_number"},
+            "ton_price": "dummy_ton_pice",
+            "fee_ton": "dummy_fee_ton",
+            "ref_id": "dummy_ref_id",
+            "status": "dummy_status",
+            "type": "dummy_type",
+            "error": "dummy_error",
+            "created_at": "dummy_created_at",
+        }
 
         if not username or not username.strip():
             raise ValueError("username must not be empty")
@@ -86,7 +120,8 @@ class FragmentClient:
             raise ValueError("amount_stars must be positive")
 
         if not await self.resolve_username(username):
-            pass # TODO: реализовать поведение при отсутствии username
+            logger.exception(f"Не найден {username} ")
+            raise FragmentAPIError(f"Не найден {username}") # TODO: возможно пересмотреть поведение при отсутствии username
 
         payload = {
             "username": username,
@@ -123,8 +158,10 @@ class FragmentClient:
                 timeout=30.0
             )
         except httpx.TimeoutException as e:
+            logger.exception("Превышено время ожидания от fragment-api при проверке username")
             raise FragmentAPIError("Превышено время ожидания от fragment-api при проверке username") from e
         except httpx.HTTPError as e:
+            logger.exception("Ошибка HTTP от fragment-api при проверке username")
             raise FragmentAPIError(f"Ошибка HTTP от fragment-api при проверке username: {e}") from e
 
         if response.status_code == 200:
@@ -134,8 +171,10 @@ class FragmentClient:
             return False
 
         if response.status_code == 400:
-            raise FragmentAPIError(f"Произошла неизвестная ошибка со стороны fragment-api:\n{response.json()}")
+            logger.error(f"Произошла неизвестная ошибка со стороны fragment-api:\n{response.json() = }")
+            raise FragmentAPIError(f"Произошла неизвестная ошибка со стороны fragment-api:\n{response.json() = }")
 
+        logger.exception(f"Неизвестный ответ от сервера fragment-api: {response.status_code = }")
         raise FragmentAPIError(
             f"Неизвестный ответ от сервера fragment-api:\n{response.status_code = } - {response.text = }"
         )
@@ -144,7 +183,7 @@ class FragmentClient:
             self,
             payload: dict[str, str | int | bool],
             retry_on_401: bool=True
-    ) -> dict[str, object]:
+    ) -> FragmentResponse:
         await self._ensure_authenticated()
 
         headers = await self._get_headers("POST")
@@ -164,7 +203,8 @@ class FragmentClient:
             raise FragmentAPIError(f"Ошибка HTTP во время отправки звёзд: {exc}") from exc
 
         if response.status_code == 200:
-            return response.json()
+            response_data = cast(FragmentResponse, response.json())
+            return response_data
 
         # response.status_code никогда не будет 401 судя по документации; если будет какая-то ошибка, то
         # response.status_code будет 400, и там будет указана ошибка со своей нумерацией из документации

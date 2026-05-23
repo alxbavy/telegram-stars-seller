@@ -32,7 +32,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
     return ConversationHandler(
         entry_points=[
             CommandHandler("start", start_handler),
-            CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback)
+            CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
         ],
         states={
             BotConversationState.MAIN_MENU: [
@@ -67,8 +67,12 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
                 CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback)
             ],
             # Состояния подтверждения ждут перехода по URL, бот здесь просто висит
-            BotConversationState.ORDER_CONFIRMATION_SELF: [],
-            BotConversationState.ORDER_CONFIRMATION_GIFT: [],
+            BotConversationState.ORDER_CONFIRMATION_SELF: [
+                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+            ],
+            BotConversationState.ORDER_CONFIRMATION_GIFT: [
+                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+            ],
             ConversationHandler.WAITING: [  # Временное состояние для асинхронной работы, вход и выход из него контролировать не надо
                 CommandHandler("start", _bot_is_busy),
                 CallbackQueryHandler(_bot_is_busy)

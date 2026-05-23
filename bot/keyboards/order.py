@@ -112,4 +112,4 @@ def build_confirmation_kb(pay_url: str, back_dest: BackDestination, is_self: boo
     return InlineKeyboardMarkup(buttons)
 
 def build_repeat_order_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("✨ Сделать ещё заказ!", callback_data=RepeatOrderCallback())]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✨ Сделать ещё заказ!", callback_data="repeat_order")]])

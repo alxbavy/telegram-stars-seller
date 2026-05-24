@@ -68,7 +68,7 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
             f"❌ Произошла ошибка. Можно попробовать начать новый заказ или обратиться в тех. поддержку "
             f"с текстом ошибки.\n"
             f"🆔 ID заказа: {transaction_id}\n\n"
-            f"Текст ошибки:\n<pre>{err = }</pre>"
+            f"Текст ошибки:\n<pre>{transaction_err = }</pre>"
         )
         try:
             _ = await bot.send_message(

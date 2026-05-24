@@ -158,29 +158,76 @@ class PaymentService:
             json_payload=payload
         )
 
-    async def confirm_payment(self, transaction_id: str):
+    async def confirm_payment(self, transaction_id: str) -> Transaction | None:
         """
         Вызывается при получении Вебхука от платежки.
+
+        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
+
+        - Если `transaction.status == "SUCCESS"`, то сразу вернётся соответствующая транзакция.
+
+        - Если перевод звёзд пройдёт успешно, то `transaction.status` станет `"SUCCESS"`, при неудачном переводе -
+        `"CANCELLED"`.
+
+        - Если при переводе звёзд возникнет ошибка, то `transaction.status` сам станет `"FAILED"`, и ошибка пробросится
+        дальше.
         """
         # TODO: Должно вызываться не только при получении Вебхука от платежки,
         #       но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
         #       (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
-        transaction = await self._trans_repo.get_by_transaction_id(transaction_id)
-        if transaction and transaction.status == TransactionStatus.PENDING:
-            is_send_success, payload = await self._fragment_client.send_stars(
+        transaction_uuid = UUID(transaction_id)
+
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        if transaction is None:
+            return None
+
+        if transaction.status == TransactionStatus.SUCCESS:
+            return transaction
+
+        try:
+            response = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )
 
-            if is_send_success:
-                new_transaction_status = TransactionStatus.SUCCESS
-            else:
-                new_transaction_status = TransactionStatus.FAILED
-                await self._trans_repo.update_payload(transaction, payload)
-            await self._trans_repo.update_status(transaction, new_transaction_status)
+        except Exception as e:
+            transaction = await self._trans_repo.update_payload(
+                transaction,
+                {"error_msg": str(e)}
+            )
+            _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
+            raise e
 
-            return transaction
+        transaction = await self._trans_repo.update_payload(transaction, response)
 
-        return None
+        if not response["success"]:
+            new_transaction_status = TransactionStatus.CANCELLED
+        else:
+            new_transaction_status = TransactionStatus.SUCCESS
+        return await self._trans_repo.update_status(transaction, new_transaction_status)
+
+
+    async def cancel_transaction(
+            self,
+            transaction_id: str,
+            payload: Mapping[str, object] | None = None
+    ) -> Transaction | None:
+        """
+        Выставляет транзакции статус `"CANCELLED"`.
+
+        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
+        """
+
+        transaction_uuid = UUID(transaction_id)
+
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        if transaction is None:
+            return None
+
+        if payload is not None:
+            transaction = await self._trans_repo.update_payload(transaction, payload)
+
+        return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+
 
     async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """

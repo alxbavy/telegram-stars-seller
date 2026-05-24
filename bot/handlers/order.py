@@ -189,10 +189,18 @@ async def _handle_payment_method_helper(
     if cb_data.price is None:
         raise NotImplementedError("needs static implementation")
 
+    try:
+        method_id = int(cb_data.method_external_id)
+    except ValueError:
+        raise KeyboardMethodError("Внешний ID метода оплаты должен быть целым числом для используемого API")
+
     payment_dto = await payment_service.create_payment_and_transaction(
         user_id=update.effective_user.id,
+        message_id=update.effective_message.message_id,
+        price=cb_data.price,
         stars_count=stars_count,
-        method=cb_data.method_id,
+        payment_api=cb_data.method_api,
+        method=method_id,
         target_username=ctx.order.target_username
     )
 

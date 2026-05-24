@@ -10,7 +10,6 @@ from core.services.star_price import StarService
 from core.services.payment import PaymentService
 from core.services.stats import StatsService
 from core.services.support import SupportService
-from core.services.telegram import TelegramService
 from core.services.user import UserService
 
 
@@ -24,7 +23,6 @@ class BusinessLogicProvider(Provider):
     platega_client = provide(PlategaClient, scope=Scope.APP)
 
     support_service = provide(SupportService, scope=Scope.APP)
-    tg_service = provide(TelegramService, scope=Scope.APP)
     stats_service = provide(StatsService, scope=Scope.APP)
     star_service = provide(StarService, scope=Scope.APP)
     payment_service = provide(PaymentService, scope=Scope.APP)

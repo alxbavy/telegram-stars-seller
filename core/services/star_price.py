@@ -7,7 +7,7 @@ class StarService:
     def __init__(self, payment_repo: PaymentRepository):
         self._payment_repo = payment_repo
 
-    async def get_order_price(self, stars_count: int, payment_method: str) -> Decimal:
+    async def get_order_price(self, stars_count: int, payment_method_or_commission_percent: str | Decimal) -> Decimal:
         """Возвращает финальную стоимость заказа со всеми комиссиями."""
         settings, exchange_rate = await self._payment_repo.get_pricing_data()
 
@@ -19,9 +19,16 @@ class StarService:
         )
         stars_total_price_raw = star_logic.final_stars_cost(stars_count, price_per_star)
 
-        payment_method_obj = await self._payment_repo.get_payment_method_by_name(payment_method)
+        if isinstance(payment_method_or_commission_percent, Decimal):
+            commission_percent = payment_method_or_commission_percent
+        elif isinstance(payment_method_or_commission_percent, str):
+            payment_method_obj = await self._payment_repo.get_payment_method_by_name(payment_method_or_commission_percent)
+            commission_percent = payment_method_obj.commission_percent
+        else:
+            raise TypeError("payment_method_or_commission_percent must be str or Decimal")
+
         stars_total_price_final = star_logic.apply_commission(
-            stars_total_price_raw, payment_method_obj.commission_percent
+            stars_total_price_raw, commission_percent
         )
 
         return stars_total_price_final

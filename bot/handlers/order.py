@@ -139,7 +139,7 @@ async def _handle_gift_username_helper(
 
         # noinspection PyUnnecessaryCast
         username = cast(str, user_msg.text)
-        username_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
+        username_pattern = re.compile(r"^@?[a-zA-Z][a-zA-Z0-9_]{2,31}$")
         if not username_pattern.search(username):
             return BotConversationState.ENTER_GIFT_USERNAME
 

@@ -76,11 +76,11 @@ class FragmentClient:
         """
         import asyncio
         await asyncio.sleep(5)
+        username = username.lstrip("@")
         if username == "True":  # TODO: для дебага - убрать в релизе
             return True
         else:
             return False
-        username = username.lstrip("@")
         return await self._find_user_by_username(username)
 
     async def send_stars(self, username: str, amount_stars: int) -> FragmentResponse:

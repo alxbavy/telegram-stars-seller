@@ -1,6 +1,9 @@
+from collections.abc import Mapping
+import json
 from decimal import Decimal
 from typing import final, override
 
+from django import forms
 from django.contrib import admin
 from django.http import HttpRequest
 from django.utils import timezone
@@ -55,10 +58,26 @@ class TelegramUserAdmin(admin.ModelAdmin):
     inlines = [TransactionInline]
 
 
+class PrettyJSONWidget(forms.Textarea):
+    @override
+    def format_value(self, value: str | Mapping[str, object]):
+        try:
+            if isinstance(value, str):
+                value = json.loads(value)
+            return json.dumps(value, indent=4, ensure_ascii=False)
+        except (ValueError, TypeError):
+            return super().format_value(value)
+
+
 @final
 class TransactionMetadataInline(admin.StackedInline):
     model: type[TransactionMetadata] = TransactionMetadata
     can_delete = False
+    formfield_overrides = {
+        TransactionMetadata._meta.get_field(
+            "payload"
+        ).__class__: {"widget": PrettyJSONWidget}
+    }
 
 
 @final

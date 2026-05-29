@@ -65,9 +65,10 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
                 transaction = await payment_service.confirm_payment(transaction_id)
     except Exception as transaction_err:
         text = (
-            f"❌ Произошла ошибка. Можно попробовать начать новый заказ или обратиться в тех. поддержку "
-            f"с текстом ошибки.\n"
-            f"🆔 ID заказа: {transaction_id}\n\n"
+            f"❌ <b>Произошла ошибка!</b>\n\n"
+            f"Можешь попробовать начать новый заказ или обратиться в тех. поддержку "
+            f"с ID заказа и текстом ошибки\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
             f"Текст ошибки:\n<pre>{transaction_err = }</pre>"
         )
         try:
@@ -104,25 +105,26 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
 
     if transaction.status == TransactionStatus.SUCCESS:
         text = (
-            f"😊 Заказ успешно доставлен!\n\n"
+            f"😊 <b>Заказ успешно доставлен!</b>\n\n"
             f"Пополнили — ⭐ {transaction.amount_stars} звёзд\n"
             f'{"Для кого — @" + transaction.target_username + "\n" if transaction.target_username != "Себе" else ""}\n'
             f"Спасибо за покупку! ❤️\n\n"
-            f"(Вы можете сделать новый заказ с помощью /start)"
+            f"✨ <b>Сделать ещё заказ — /start</b>"
         )
         reply_markup = None
     elif transaction.status == TransactionStatus.CANCELLED:
         text = (
-            f"⚠️ Вашему заказу был присвоен статус {TransactionStatus.CANCELLED.translation}.\n\n"
-            f"Если вы решили не делать заказ, то можете проигнорировать это сообщение.\n\n"
-            f"В ином случае обратитесь в тех. поддержку с ID заказа.\n"
-            f"🆔 ID заказа: {transaction_id}"
+            f"⚠️ <b>Твоему заказу был присвоен статус {TransactionStatus.CANCELLED.translation}</b>\n\n"
+            f"Если ты решил не делать заказ, то можешь проигнорировать это сообщение\n\n"
+            f"В ином случае обратись в тех. поддержку с ID заказа\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>"
         )
         reply_markup = build_error_kb(support_url)
     else:
         text = (
-            f"❌ Произошла ошибка при переводе звёзд. Обратитесь в тех. поддержку с ID заказа и текстом ошибки.\n\n"
-            f"🆔 ID заказа: {transaction_id}\n\n"
+            f"❌ <b>Произошла ошибка при переводе звёзд!</b>\n\n"
+            f"Обратись в тех. поддержку с ID заказа и текстом ошибки\n\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>\n"
             f"Текст ошибки:\n<pre>{json.dumps(transaction.metadata_info.payload, indent=4)}</pre>"
         )
         reply_markup = build_error_kb(support_url)

@@ -40,39 +40,34 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
     support_url = await support_service.get_support_url()
     parse_mode = ParseMode.HTML
 
-    if isinstance(context.error, FragmentAPIError):
+    if isinstance(context.error, (FragmentAPIError, PlategaAPIError)):
         text = (
-            "❌ Произошла ошибка. Можете прочитать текст ошибки, и, если уверены, попробовать снова.\n\n"
-            "Также, можно начать новый заказ, или вернуться назад, если есть возможность, или "
-            "обратиться в тех. поддержку с текстом ошибки.\n\n"
-            f"Текст ошибки:\n<pre>{context.error}</pre>"
-        )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
-
-    elif isinstance(context.error, PlategaAPIError):
-        text = (
-            "❌ Произошла ошибка. Можете прочитать текст ошибки, и, если уверены, попробовать снова.\n\n"
-            "Также, можно начать новый заказ, или вернуться назад, если есть возможность, или "
-            "обратиться в тех. поддержку с текстом ошибки.\n\n"
+            "❌ <b>Произошла ошибка. Можешь прочитать текст ошибки, и, если уверен, попробовать снова</b>\n\n"
+            "Также, можешь начать новый заказ, или вернуться назад, если есть возможность, или "
+            "обратиться в тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, KeyboardMethodError):
         text = (
-            "❌ Произошла ошибка. Метод оплаты недоступен по техническим причинам.\n\n"
-            "Можете попробовать выбрать другой метод оплаты, или вернуться назад, или обратиться в тех. поддержку"
-            "с текстом ошибки.\n\n"
-            f"Текст ошибки:\n<pre>{context.error}</pre>```"
+            "❌ <b>Произошла ошибка. Метод оплаты недоступен по техническим причинам</b>\n\n"
+            "Можешь попробовать выбрать другой метод оплаты, или вернуться назад, или обратиться в тех. поддержку "
+            "с текстом ошибки\n\n"
+            f"Текст ошибки:\n<pre>{context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, MaintenanceModeException):
         text = (
-            "⚠️ Извините, бот на техническом перерыве...\n\n"
-            "(Если вы были в процессе создания заказа, то он был отменён, поэтому вам нужно будет создать новый заказ)"
+            "⚠️ <b>Извини, бот на техническом перерыве...</b>\n\n"
+            "Если оформлялся заказ, то он был отменён, поэтому в таком случае нужно начать новый с помощью /start"
         )
         ctx = get_view_context(context)
+        try:
+            _ = await ctx.active_conversation.delete()
+        except:
+            pass
         ctx.active_conversation = None
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 

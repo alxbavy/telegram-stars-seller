@@ -33,7 +33,7 @@ async def show_choose_quantity(update: Update) -> Message:
 
 @autosave_active_conversation
 async def show_custom_quantity_input(update: Update) -> Message:
-    text = "🌟 <b>Введи количество звёзд</b>\n\nМинимум 50."
+    text = "🌟 <b>Введи количество звёзд</b>\n\nМинимум 50"
     return await render_screen(update, text, build_back_to_quantity_kb())
 
 
@@ -42,36 +42,35 @@ async def show_large_order_warning(update: Update, quantity: int, support_url: s
     text = (
         f"⚠️ <b>Заказ в размере {quantity} звёзд нужно согласовать!</b>\n\n"
         f"Большие заказы мы не обрабатываем автоматически.\n"
-        "Напиши в поддержку, чтобы оформить пополнение."
+        "Напиши в поддержку, чтобы оформить пополнение"
     )
     return await render_screen(update, text, build_large_order_kb(support_url))
 
 
 @autosave_active_conversation
 async def show_choose_recipient(update: Update) -> Message:
-    text = "✨ <b>Кому отправить звёзды?</b>\n\nВыбери вариант ниже."
+    text = "✨ <b>Кому отправить звёзды?</b>\n\nВыбери вариант ниже"
     return await render_screen(update, text, build_recipient_kb(), "choose_recipient.jpg")
 
 
 @autosave_active_conversation
 async def show_enter_username(update: Update) -> Message:
-    text = "🎁 <b>Введи @username получателя</b>\n\nНапример: @dween"
+    text = "🎁 <b>Введи @username получателя</b>\n\nНапример: @pmlame"
     return await render_screen(update, text, build_back_to_recipient_kb())
 
 
 @autosave_active_conversation
 async def show_searching_username(update: Update, username: str) -> Message:
     text = (
-        f"🔎 Ищем пользователя {username}...\n\nЭто займёт несколько секунд.\n\n"
-        f"(Кнопка \"Назад\" во время поиска неактивна)"
+        f"🔎 <b>Ищем пользователя {username}...</b>\n\nЭто займёт некоторое время\n\n"
+        f"Кнопка \"Назад\" во время поиска неактивна"
     )
     return await render_screen(update, text, build_back_to_recipient_kb())
 
 
 @autosave_active_conversation
 async def show_user_not_found(update: Update, user: str) -> Message:
-    text = f"❌ <b>Пользователь {user} не найден</b>\n\nПроверь @username и повтори попытку."
-    # return await render_screen(update, text, build_user_not_found_kb())  # TODO: проверить поведение
+    text = f"❌ <b>Пользователь {user} не найден</b>\n\nПроверь @username и повтори попытку"
     return await render_screen(update, text, build_back_to_recipient_kb())
 
 
@@ -82,11 +81,11 @@ async def show_payment_methods_static(
         is_gift: bool, username: str | None = None
 ) -> Message:
     if is_gift:
-        text = f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}.\nВыбери: СБП или Картой."
+        text = f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}.\nВыбери: СБП или Картой"
         back_dest = BackDestination.ENTER_GIFT_USERNAME
         photo = "payment_method_gift.jpg"
     else:
-        text = "💸 <b>Теперь выбери способ оплаты</b>\n\nВыбери: СБП или Картой."
+        text = "💸 <b>Теперь выбери способ оплаты</b>\n\nВыбери: СБП или Картой"
         back_dest = BackDestination.CHOOSE_RECIPIENT
         photo = "payment_method_self.jpg"
 
@@ -102,11 +101,11 @@ async def show_payment_methods_dynamic(
         *, payment_service: PaymentService, star_service: StarService
 ) -> Message:
     if is_gift:
-        text = f"Пополним звёзды для {username}.\n\n💳 <b>Выбери способ оплаты:</b>"
+        text = f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}"
         back_dest = BackDestination.ENTER_GIFT_USERNAME
         photo = "payment_method_gift.jpg"
     else:
-        text = "💸 <b>Теперь выбери способ оплаты:</b>"
+        text = "💸 <b>Теперь выбери способ оплаты</b>"
         back_dest = BackDestination.CHOOSE_RECIPIENT
         photo = "payment_method_self.jpg"
 
@@ -129,8 +128,8 @@ async def show_order_confirmation(
     text = (
         f"☝️ <b>Проверь заказ перед оплатой!</b>\n\nПополним — ⭐ {stars} звёзд\nСтоимость — {price:.2f} ₽\n"
         f"{'Для кого 🎁 — ' + target_username + '\n' if target_username else ''}"
-        f"🆔 ID заказа: {transaction_id}\n\n"
-        f"Ссылка на оплату действует {expires_in} минут{ending}."
+        f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
+        f"Ссылка на оплату действует {expires_in} минут{ending}"
     )
     back_dest = BackDestination.CHOOSE_PAYMENT_GIFT if is_gift else BackDestination.CHOOSE_PAYMENT_SELF
     photo = "order_confirmation_gift.jpg" if is_gift else "order_confirmation_self.jpg"

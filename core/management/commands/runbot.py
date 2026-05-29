@@ -1,11 +1,19 @@
 import os
+from pathlib import Path
 from typing import Any, cast, final, override
 import warnings
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from dishka import AsyncContainer, make_async_container
 from telegram import Update, BotCommand
-from telegram.ext import ApplicationBuilder, ContextTypes, ExtBot, JobQueue, TypeHandler, Application
+from telegram.ext import (
+    ApplicationBuilder, Application, ExtBot,
+    JobQueue,
+    ContextTypes,
+    TypeHandler,
+    PicklePersistence, PersistenceInput
+)
 from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
@@ -71,6 +79,19 @@ class Command(BaseCommand):
 
         container = make_async_container(BusinessLogicProvider())
 
+        # data_dir = Path(settings.BASE_DIR) / "bot" / "data"
+        # data_dir.mkdir(parents=True, exist_ok=True)
+        # filepath = data_dir / "bot_persistence.pickle"
+        #
+        # persistence = PicklePersistence(
+        #     filepath=filepath,
+        #     store_data=PersistenceInput(
+        #         bot_data=False
+        #     ),
+        #     update_interval=30
+        # )
+
+        # .persistence(persistence) TODO: раскомментировать в релизе, в дебаге персистентность мешает
         application = (
             ApplicationBuilder()
             .token(token)

@@ -1,4 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+
+from dacite import from_dict
 
 from telegram import Message
 from telegram.ext import ContextTypes
@@ -40,13 +42,14 @@ def get_view_context(context: ContextTypes.DEFAULT_TYPE) -> ViewContext:
     """Helper для безопасного получения/создания контекста."""
     if "view_context" not in context.user_data:
         context.user_data["view_context"] = ViewContext()
+    # else:  TODO: раскомментировать в релизе, в дебаге персистентность мешает
+    #     context.user_data["view_context"] = from_dict(ViewContext, data=asdict(context.user_data["view_context"]))
     return context.user_data["view_context"]
 
 
-def clear_order_draft(context: ContextTypes.DEFAULT_TYPE):
+def clear_context(context: ContextTypes.DEFAULT_TYPE):
     """Очистка черновика заказа."""
-    ctx = get_view_context(context)
-    ctx.order = OrderDraft()
+    context.user_data["view_context"] = ViewContext()
 
 
 def clear_profile_data(context: ContextTypes.DEFAULT_TYPE):

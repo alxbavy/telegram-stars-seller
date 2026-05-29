@@ -143,6 +143,9 @@ async def _handle_gift_username_helper(
         if not username_pattern.search(username):
             return BotConversationState.ENTER_GIFT_USERNAME
 
+        ctx = get_view_context(context)
+
+        _ = await ctx.active_conversation.delete()
         msg_searching = await show_searching_username(update, context, username)
 
         is_found = await fragment_client.resolve_username(username)
@@ -153,7 +156,6 @@ async def _handle_gift_username_helper(
             _ = await show_user_not_found(update, context, username)
             return BotConversationState.ENTER_GIFT_USERNAME
 
-        ctx = get_view_context(context)
         ctx.order.target_username = username
 
         # noinspection PyUnnecessaryCast

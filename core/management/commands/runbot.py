@@ -68,7 +68,7 @@ class Command(BaseCommand):
         #       Conversation со своими состояниями; в нашем случае нельзя использовать per_message=True, т.к. иногда
         #       начальное сообщение от Conversation необходимо удалить и сделать новое - в таком случае id не обновится
         #       для хэндлера)
-        # warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
+        warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
         self.stdout.write("Бот запускается...")
 

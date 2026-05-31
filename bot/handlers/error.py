@@ -39,13 +39,14 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     support_url = await support_service.get_support_url()
     parse_mode = ParseMode.HTML
+    error_type = context.error.__class__.__name__
 
     if isinstance(context.error, (FragmentAPIError, PlategaAPIError)):
         text = (
             "❌ <b>Произошла ошибка. Можешь прочитать текст ошибки, и, если уверен, попробовать снова</b>\n\n"
             "Также, можешь начать новый заказ, или вернуться назад, если есть возможность, или "
             "обратиться в тех. поддержку с текстом ошибки\n\n"
-            f"Текст ошибки:\n<pre>{context.error}</pre>"
+            f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
@@ -54,7 +55,7 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "❌ <b>Произошла ошибка. Метод оплаты недоступен по техническим причинам</b>\n\n"
             "Можешь попробовать выбрать другой метод оплаты, или вернуться назад, или обратиться в тех. поддержку "
             "с текстом ошибки\n\n"
-            f"Текст ошибки:\n<pre>{context.error}</pre>"
+            f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
@@ -90,6 +91,6 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "❌ <b>Произошла непредвиденная ошибка!</b>\n\n"
             "Если уверен, можешь попытаться повторить последнее действие, начать новый заказ, или обратиться в тех. "
             "поддержку с текстом ошибки\n\n"
-            f"Текст ошибки:\n<pre>{context.error}</pre>"
+            f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)

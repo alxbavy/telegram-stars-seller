@@ -37,6 +37,7 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
     if request.method != "POST":
         return JsonResponse({"error": "method not allowed"}, status=405)
 
+    # TODO: добавить проверку merchant_id и secret
     data = cast(PlategaRequestJson, json.loads(request.body))
     parsed_payload = data["payload"].split(" ")
     user_id = int(parsed_payload[0].split("-")[1])
@@ -69,7 +70,7 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
             f"Можешь попробовать начать новый заказ или обратиться в тех. поддержку "
             f"с ID заказа и текстом ошибки\n"
             f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
-            f"Текст ошибки:\n<pre>{transaction_err = }</pre>"
+            f"Текст ошибки:\n<pre>{transaction_err.__class__.__name__}: {transaction_err}</pre>"
         )
         try:
             _ = await bot.send_message(

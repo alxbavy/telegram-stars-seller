@@ -13,29 +13,65 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Copy files via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
-          target: "/root/bot_project"
-          rm: true
+      - name: Ensure local env is not uploaded
+        run: |
+          rm -f .env
 
-      - name: Execute SSH commands
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Prepare server directory
+        uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ vars.HOST }}
+          username: ${{ vars.USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
+            set -e
+
+            mkdir -p /root/telegram-stars-seller
+
+            if [ ! -f /root/telegram-stars-seller/.env ]; then
+              echo "Ошибка: файл /root/telegram-stars-seller/.env не найден"
+              echo "Создайте .env на сервере перед деплоем"
+              exit 1
+            fi
+
+            find /root/telegram-stars-seller \
+              -mindepth 1 \
+              -maxdepth 1 \
+              ! -name ".env" \
+              -exec rm -rf {} +
+
+      - name: Copy files via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ vars.HOST }}
+          username: ${{ vars.USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "."
+          target: "/root/telegram-stars-seller"
+          rm: false
+
+      - name: Execute deploy commands
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.HOST }}
+          username: ${{ vars.USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+
             cd /root/telegram-stars-seller
-            echo "${{ secrets.ENV_FILE }}" > .env
+
+            if [ ! -f .env ]; then
+              echo "Ошибка: файл /root/telegram-stars-seller/.env не найден"
+              exit 1
+            fi
+
             docker compose down
             docker compose up -d --build
+
             sleep 5
+
             docker compose exec -T web python manage.py migrate
             docker compose exec -T web python manage.py collectstatic --noinput
-            
+
             echo "Деплой успешно завершен"

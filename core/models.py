@@ -219,6 +219,25 @@ class ExchangeRate(SingletonModel):
         verbose_name = "Курс валют"
 
 
+class FragmentAPI(SingletonModel):
+    objects = models.Manager()
+
+    token = models.TextField(blank=True, help_text="Можно получить в Dashboard на fragment-api.com/dashboard")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
+
+    @classmethod
+    async def aget_solo(cls):
+        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        return obj
+
+    @override
+    def __str__(self):
+        return "Токен для FragmentAPI"
+
+    class Meta:
+        verbose_name = "Токен для FragmentAPI"
+
+
 # TODO: Вроде бы не надо, так как для Persistence будет PicklePersistence
 class BotState(models.Model):
     objects = models.Manager()

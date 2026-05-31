@@ -14,7 +14,7 @@ from solo.admin import SingletonModelAdmin
 
 from .models import (
     PaymentAPI, TelegramUser, Transaction, TransactionMetadata,
-    PaymentMethod, GlobalSettings, ExchangeRate,
+    PaymentMethod, GlobalSettings, ExchangeRate, FragmentAPI,
     MonthlyProfit
 )
 
@@ -179,3 +179,10 @@ class MonthlyProfitAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request: HttpRequest, obj: object | None = None): return False
     @override
     def has_change_permission(self, request: HttpRequest, obj: object | None = None): return False
+
+
+@final
+@admin.register(FragmentAPI)
+class FragmentAPIAdmin(SingletonModelAdmin):
+    list_display = ("token", "updated_at")
+    readonly_fields = ("updated_at", )

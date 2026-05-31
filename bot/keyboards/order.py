@@ -1,9 +1,16 @@
+from decimal import Decimal
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 from bot.callbacks import (
-    FixedQuantityCallback, CustomQuantityCallback, BackCallback, BackDestination,
+    FixedQuantityCallback, CustomQuantityCallback, BackCallback,
     RecipientModeCallback, PaymentMethodCallback, ConfirmOrderCallback, RepeatOrderCallback
 )
-from bot.context import RecipientMode
+from bot.enums import BackDestination, RecipientMode
+
+from core.services.payment import PaymentService
+from core.services.star_price import StarService
+
 
 def build_quantity_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -48,12 +55,54 @@ def build_user_not_found_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.CHOOSE_RECIPIENT))]
     ])
 
-def build_payment_methods_kb(sbp_price: float, card_price: float, back_dest: BackDestination) -> InlineKeyboardMarkup:
+def build_payment_methods_kb_static(sbp_price: Decimal, card_price: Decimal, back_dest: BackDestination) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback("sbp"))],
-        [InlineKeyboardButton(f"💳 Картой — {card_price} ₽", callback_data=PaymentMethodCallback("card"))],
+        [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback(
+            method_api="",
+            method="sbp",
+            method_external_id="",
+            commission_percent=Decimal("5.00"),
+            price=None
+        ))],
+        [InlineKeyboardButton(f"💳 Картой — {card_price} ₽", callback_data=PaymentMethodCallback(
+            method_api="",
+            method="card",
+            method_external_id="",
+            commission_percent=Decimal("10.00"),
+            price=None
+        ))],
         [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))]
     ])
+
+async def build_payment_methods_kb_dynamic(
+        stars_count: int,
+        payment_service: PaymentService, star_service: StarService,
+        back_dest: BackDestination,
+) -> InlineKeyboardMarkup:
+    kb: list[list[InlineKeyboardButton]] = []
+
+    payment_methods = await payment_service.get_active_payment_methods()
+    for method in payment_methods:
+
+        emoji = ""
+        if "сбп" in method.name.lower():
+            emoji = "📲 "
+        elif any(word in method.name.lower() for word in ["карта", "картой", "эквайринг"]):
+            emoji = "💳 "
+        text = method.name
+
+        price = await star_service.get_order_price(stars_count, method.commission_percent)
+
+        kb.append([InlineKeyboardButton(f"{emoji}{text} — {price} ₽", callback_data=PaymentMethodCallback(
+            method_api=method.api_name,
+            method=method.name,
+            method_external_id=method.external_id,
+            price=price,
+            commission_percent=None
+        ))])
+    kb.append([InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))])
+
+    return InlineKeyboardMarkup(kb)
 
 def build_confirmation_kb(pay_url: str, back_dest: BackDestination, is_self: bool) -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton("💳 Оплатить", url=pay_url)]]
@@ -63,4 +112,4 @@ def build_confirmation_kb(pay_url: str, back_dest: BackDestination, is_self: boo
     return InlineKeyboardMarkup(buttons)
 
 def build_repeat_order_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("✨ Сделать ещё заказ!", callback_data=RepeatOrderCallback())]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✨ Сделать ещё заказ!", callback_data="repeat_order")]])

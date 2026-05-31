@@ -1,42 +1,65 @@
-import uuid
+from uuid import UUID
+from collections.abc import Mapping
+from datetime import datetime
 
 from django.db import transaction
+from django.utils import timezone
 from asgiref.sync import sync_to_async
-from django.db.models import Sum
 
 from core.domain.enums import TransactionStatus, TransactionType
 from core.models import TelegramUser, Transaction, TransactionMetadata
 
 
 class TransactionRepository:
-    @staticmethod
+    model: type[Transaction] = Transaction
+    model_metadata: type[TransactionMetadata] = TransactionMetadata
+
     @sync_to_async(thread_sensitive=True)
     def create_transaction(
+            self,
+            transaction_id: UUID,
             user: TelegramUser,
             amount_fiat: float,
             amount_stars: int,
             payment_method: str,
-            target_username: str = None,
+            expires_in: str = "",
+            target_username: str = "",
             status: str = TransactionStatus.PENDING,
             transaction_type: str = TransactionType.PURCHASE,
-            json_payload: dict = None
+            json_payload: Mapping[str, object] | None = None
     ) -> Transaction:
         """
         Raises:
+
             IntegrityError - если при создании transaction.id UUID будет неуникальным.
         """
-        if json_payload is None:
-            json_payload = {}
-
         with transaction.atomic():
-            new_transaction = Transaction.objects.create(
-                telegram_user=user,
-                amount_fiat=amount_fiat,
-                amount_stars=amount_stars,
-                status=status,
-                target_username=target_username
-            )
-            TransactionMetadata.objects.create(
+            transaction_kwargs = {
+                "id": transaction_id,
+                "telegram_user": user,
+                "amount_fiat": amount_fiat,
+                "amount_stars": amount_stars,
+                "status": status,
+            }
+            if target_username:
+                transaction_kwargs["target_username"] = target_username
+
+            new_transaction = self.model.objects.create(**transaction_kwargs)
+
+            if expires_in:
+                expires_in_datetime = datetime.strptime(expires_in, "%H:%M:%S")
+                expires_in_td = timezone.timedelta(
+                    hours=expires_in_datetime.hour,
+                    minutes=expires_in_datetime.minute,
+                    seconds=expires_in_datetime.second
+                )
+                new_transaction.expires_at = new_transaction.created_at + expires_in_td
+                new_transaction.save(update_fields=["expires_at"])
+
+            if json_payload is None:
+                json_payload = {}
+
+            _ = self.model_metadata.objects.create(
                 transaction=new_transaction,
                 type=transaction_type,
                 payment_method=payment_method,
@@ -44,36 +67,67 @@ class TransactionRepository:
             )
             return new_transaction
 
-    @staticmethod
-    async def get_by_transaction_id(transaction_id: str | uuid.UUID) -> Transaction | None:
-        return await (
-            Transaction.objects
-            .select_related("metadata_info")
-            .filter(id=transaction_id)
-            .afirst()
-        )
+    async def get_by_transaction_id(
+            self,
+            transaction_id: UUID,
+            is_select_user: bool = True,
+            is_select_metadata: bool = True
+    ) -> Transaction | None:
+        query = self.model.objects.filter(id=transaction_id)
 
-    @staticmethod
-    async def get_many_by_username(username: str) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(telegram_user__username=username).order_by("-created_at")
-        ]
+        if is_select_user:
+            query = query.select_related("telegram_user")
 
-    # TODO: можно объединить под один get_many(username = None, telegram_id = None), если не будет дополнительной логики
-    @staticmethod
-    async def get_many_by_telegram_id(telegram_id: int) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(telegram_user__telegram_id=telegram_id).order_by("-created_at")
-        ]
+        if is_select_metadata:
+            query = query.select_related("metadata_info")
 
-    @staticmethod
-    async def get_many_success_by_telegram_id(telegram_id: int) -> list[Transaction]:
-        return [
-            t async for t in Transaction.objects.filter(
-                telegram_user__telegram_id=telegram_id,
-                status=TransactionStatus.SUCCESS
-            ).order_by("-created_at")
-        ]
+        return await query.afirst()
+
+    async def get_many_by(
+            self,
+            *,
+            telegram_id: int | None = None,
+            username: str | None = None,
+            status: TransactionStatus | None = None,
+            start_idx: int | None = None,
+            stop_idx: int | None = None,
+            is_count: bool = False,
+            is_count_only: bool = False,
+            is_select_user: bool = False,
+            is_select_metadata: bool = False
+    ) -> list[Transaction] | tuple[list[Transaction], int] | int:
+        query = self.model.objects
+
+        if telegram_id is not None:
+            query = query.filter(telegram_user__telegram_id=telegram_id)
+
+        if username is not None:
+            query = query.filter(telegram_user__username=username)
+
+        if status is not None:
+            query = query.filter(status=status)
+
+        if is_select_user:
+            query = query.select_related("telegram_user")
+
+        if is_select_metadata:
+            query = query.select_related("metadata_info")
+
+        query = query.order_by("-created_at")
+
+        if start_idx is not None and stop_idx is not None:
+            query = query[start_idx:stop_idx]
+        elif start_idx is not None:
+            query = query[start_idx:]
+        elif stop_idx is not None:
+            query = query[:stop_idx]
+
+        if is_count_only:
+            return await query.acount()
+        elif is_count:
+            return [t async for t in query], await query.acount()
+        else:
+            return [t async for t in query]
 
     @staticmethod
     async def update_status(transaction_obj: Transaction, new_status: str) -> Transaction:
@@ -82,9 +136,9 @@ class TransactionRepository:
         return transaction_obj
 
     @staticmethod
-    async def update_payload(transaction_obj: Transaction, new_payload: dict) -> TransactionMetadata:
+    async def update_payload(transaction_obj: Transaction, new_payload: Mapping[str, object]) -> Transaction:
         """
-        Если transaction_obj был получен не с помощью get_by_transaction_id(...),
+        Если transaction_obj был получен без вызова .select_related("metadata_info"),
         будет сгенерирован дополнительный запрос на получение объекта метаданных,
         так что данную функцию лучше не использовать в цикле с неполными транзакциями.
         """
@@ -92,19 +146,35 @@ class TransactionRepository:
 
         metadata.payload.update(new_payload)
         await metadata.asave(update_fields=["payload"])
-        return metadata
+        return transaction_obj
+
+    async def delete_expired_transactions(
+            self,
+            expires_in_td: timezone.timedelta,
+            transaction_ids: list[UUID] | UUID | None = None
+    ):
+        """
+        Удаляет транзакции (или одну) со статусом PENDING, у которых истекло время ожидания.
+
+        Arguments:
+
+        - `expires_in` - timedelta, время жизни от времени создания транзакции.
+
+        - `transaction_ids` - list[UUID] | UUID | None, если указано, то удалит либо транзакции с указанными ID,
+        либо конкретную транзакцию, иначе удалит все найденные транзакции (в каждом случае проверяется
+        статус PENDING и время жизни).
+        """
+        transactions = self.model.objects.filter(
+            status=TransactionStatus.PENDING,
+            created_at__lt=timezone.now() - expires_in_td
+        )
+        if isinstance(transaction_ids, UUID):
+            transactions = transactions.filter(id=transaction_ids)
+        elif isinstance(transaction_ids, list):
+            transactions = transactions.filter(id__in=transaction_ids)
+
+        _ = await transactions.adelete()
 
     @staticmethod
-    async def get_user_stats(user: TelegramUser) -> dict[str, int]:
-        total_stars = (
-            await Transaction.objects
-            .filter(telegram_user=user)
-            .aaggregate(Sum("amount_stars"))
-        )["amount_stars__sum"] or 0
-
-        orders_count = await Transaction.objects.filter(telegram_user=user).acount()
-
-        return {
-            "total_stars": total_stars,
-            "orders_count": orders_count,
-        }
+    async def delete_transaction(transaction_obj: Transaction):
+        _ = await transaction_obj.adelete()

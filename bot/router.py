@@ -1,24 +1,45 @@
-from telegram.ext import ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from bot.handlers.back import handle_back_button
 from bot.handlers.profile import handle_profile_menu, handle_history_pagination
+from bot.handlers.main import handle_main_menu
+from bot.handlers.order import (
+    handle_fixed_quantity, handle_custom_quantity_btn, handle_custom_quantity_input,
+    handle_recipient_mode, handle_gift_username,
+    handle_payment_method,
+)
+from bot.handlers.start import start_handler, repeat_order_callback
+from bot.callbacks import (
+    RepeatOrderCallback, MainMenuCallback,
+    ProfileMenuCallback, HistoryPageCallback,
+    FixedQuantityCallback, CustomQuantityCallback,
+    RecipientModeCallback,
+    PaymentMethodCallback,
+    BackCallback,
+)
 from bot.states import BotConversationState
-from bot.callbacks import *
-from bot.handlers.main import start_handler, handle_main_menu
-from bot.handlers.order import *
-from bot.handlers.start import repeat_order_callback
 
-def get_conversation_handler() -> ConversationHandler:
+
+async def _bot_is_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if cb_query := update.callback_query:
+        _ = await cb_query.answer("Бот занят, подождите немного...", show_alert=True)
+    elif msg := update.message:
+        _ = await msg.delete()  # update.message должен содержать команду /start
+
+
+def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]:
     return ConversationHandler(
         entry_points=[
             CommandHandler("start", start_handler),
-            CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback)
+            CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
         ],
         states={
             BotConversationState.MAIN_MENU: [
                 CallbackQueryHandler(handle_main_menu, pattern=MainMenuCallback)
             ],
             BotConversationState.INFO: [],
+            BotConversationState.SUPPORT: [],
             BotConversationState.PROFILE: [
                 CallbackQueryHandler(handle_profile_menu, pattern=ProfileMenuCallback)
             ],
@@ -32,6 +53,7 @@ def get_conversation_handler() -> ConversationHandler:
             BotConversationState.CUSTOM_QUANTITY_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_quantity_input)
             ],
+            BotConversationState.LARGE_ORDER_WARNING: [],
             BotConversationState.CHOOSE_RECIPIENT: [
                 CallbackQueryHandler(handle_recipient_mode, pattern=RecipientModeCallback)
             ],
@@ -45,13 +67,22 @@ def get_conversation_handler() -> ConversationHandler:
                 CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback)
             ],
             # Состояния подтверждения ждут перехода по URL, бот здесь просто висит
-            BotConversationState.ORDER_CONFIRMATION_SELF: [],
-            BotConversationState.ORDER_CONFIRMATION_GIFT: [],
+            BotConversationState.ORDER_CONFIRMATION_SELF: [
+                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+            ],
+            BotConversationState.ORDER_CONFIRMATION_GIFT: [
+                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+            ],
+            ConversationHandler.WAITING: [  # Временное состояние для асинхронной работы, вход и выход из него контролировать не надо
+                CommandHandler("start", _bot_is_busy),
+                CallbackQueryHandler(_bot_is_busy)
+            ],
         },
         fallbacks=[
             CommandHandler("start", start_handler),
             CallbackQueryHandler(handle_back_button, pattern=BackCallback)
         ],
         name="main_conversation",
+        block=False,
         # persistent=True TODO: Uncomment with persistent realisation
     )

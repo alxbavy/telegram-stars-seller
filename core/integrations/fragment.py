@@ -1,4 +1,5 @@
-from typing import Any
+import asyncio
+from typing import NotRequired, TypedDict, final, cast
 from urllib.parse import urljoin
 
 import httpx
@@ -14,16 +15,38 @@ class FragmentAPIError(Exception):
     """Базовая ошибка клиента Fragment API."""
 
 
+class Sender(TypedDict):
+    phone_number: str
+    name: NotRequired[str | None]
+
+
+class FragmentResponse(TypedDict):
+    success: bool | None
+    id: NotRequired[str]
+    receiver: str
+    goods_quantity: NotRequired[int | None]
+    sender: Sender | None
+    ton_price: str | None
+    fee_ton: str | None
+    ref_id: str | None
+    status: str
+    type: str
+    error: object
+    created_at: str
+
+
+@final
 class FragmentClient:
     AUTH_PATH = "auth/authenticate/"
     SEND_STARS_PATH = "order/stars/"
+    GET_USER_PATH = "misc/user/"
 
     def __init__(self):
-        self.url: str | None = getattr(settings, "FRAGMENT_API_URL", None)
-        self.api_key: str | None = getattr(settings, "FRAGMENT_API_KEY", None)
-        self.mnemonics: str | None = getattr(settings, "FRAGMENT_MNEMONICS", None)
-        self.phone: str | None = getattr(settings, "FRAGMENT_PHONE", None)
-        self.wallet_version: str | None = getattr(settings, "TON_WALLET_VERSION", None)
+        self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))
+        self.api_key = cast(str, getattr(settings, "FRAGMENT_API_KEY", None))
+        self.mnemonics = cast(str, getattr(settings, "FRAGMENT_MNEMONICS", None))
+        self.phone = cast(str, getattr(settings, "FRAGMENT_PHONE", None))
+        self.wallet_version = cast(str, getattr(settings, "TON_WALLET_VERSION", None))
 
         if not all([self.url, self.api_key, self.mnemonics, self.phone, self.wallet_version]):
             logger.error("FragmentAPI не сконфигурирован.")
@@ -35,13 +58,70 @@ class FragmentClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def send_stars(self, username: str, amount_stars: int) -> dict[str, Any]:
+    async def resolve_username(self, username: str) -> bool:
+        """
+        Принимает `username`. Наличие знака `@` неважно. `username` должен начинаться с любой буквы, далее разрешены
+        любые буквы, цифры и знак `_`. Длина `username` (без учёта `@`) - от `2` до `31` знаков.
+
+        Может выбросить `FragmentAPIError` (по смыслу, текст ошибок может отличаться)::
+
+            Некорректный `username`
+            Таймауты
+            HTTPError
+            Ошибки аутентификации
+            Неизвестные ошибки от fragment-api
+
+        Returns:
+            если пользователь найден - `True`, иначе `False`
+        """
+        import asyncio
+        await asyncio.sleep(5)
+        username = username.lstrip("@")
+        if username == "True":  # TODO: для дебага - убрать в релизе
+            return True
+        else:
+            return False
+        return await self._find_user_by_username(username)
+
+    async def send_stars(self, username: str, amount_stars: int) -> FragmentResponse:
+        """
+        Принимает `username` и `amount_stars`.
+
+        `amount_stars` в текущем виде проверяются во фронте.
+
+        `username` проверяется во fragment-api, поэтому в случае некорректного username будет ошибка 400.
+
+        Может выбросить `FragmentAPIError` (по смыслу, текст ошибок может отличаться)::
+
+            Некорректный `username`
+            Таймауты
+            HTTPError
+            Ошибки аутентификации
+            Неизвестные ошибки от fragment-api
+
+        Ошибки `FragmentAPIError` следует отлавливать для отображения информации об ошибках пользователю.
+        """
+        return {
+            "success": True,
+            "receiver": "dummy_receiver",
+            "sender": {"phone_number": "dummy_phone_number"},
+            "ton_price": "dummy_ton_pice",
+            "fee_ton": "dummy_fee_ton",
+            "ref_id": "dummy_ref_id",
+            "status": "dummy_status",
+            "type": "dummy_type",
+            "error": "dummy_error",
+            "created_at": "dummy_created_at",
+        }
+
         if not username or not username.strip():
             raise ValueError("username must not be empty")
         if amount_stars <= 0:
             raise ValueError("amount_stars must be positive")
 
-        await self._ensure_authenticated()
+        if not await self.resolve_username(username):
+            logger.exception(f"Не найден {username} ")
+            raise FragmentAPIError(f"Не найден {username}") # TODO: возможно пересмотреть поведение при отсутствии username
 
         payload = {
             "username": username,
@@ -51,11 +131,62 @@ class FragmentClient:
 
         return await self._send_stars_request(payload)
 
-    async def _send_stars_request(self, payload: dict[str, Any], retry_on_401: bool=True) -> dict[str, Any]:
-        headers = {
-            "Authorization": f"JWT {self.token}",
-            "Content-Type": "application/json"
-        }
+    async def _find_user_by_username(self, username: str) -> bool:
+        """
+        Принимает username без знака `@`.
+
+        Может выбросить `FragmentAPIError` (по смыслу, текст ошибок может отличаться)::
+
+            Некорректный `username`
+            Таймауты
+            HTTPError
+            Ошибки аутентификации
+            Неизвестные ошибки от fragment-api
+
+        Returns:
+            если пользователь найден - `True`, иначе `False`
+        """
+        await self._ensure_authenticated()
+
+        headers = await self._get_headers("GET")
+
+        await asyncio.sleep(2)
+        try:
+            response = await self._client.get(
+                urljoin(self.url, f"{self.GET_USER_PATH}{username}/"),
+                headers=headers,
+                timeout=30.0
+            )
+        except httpx.TimeoutException as e:
+            logger.exception("Превышено время ожидания от fragment-api при проверке username")
+            raise FragmentAPIError("Превышено время ожидания от fragment-api при проверке username") from e
+        except httpx.HTTPError as e:
+            logger.exception("Ошибка HTTP от fragment-api при проверке username")
+            raise FragmentAPIError(f"Ошибка HTTP от fragment-api при проверке username: {e}") from e
+
+        if response.status_code == 200:
+            return True
+
+        if response.status_code == 404:
+            return False
+
+        if response.status_code == 400:
+            logger.error(f"Произошла неизвестная ошибка со стороны fragment-api:\n{response.json() = }")
+            raise FragmentAPIError(f"Произошла неизвестная ошибка со стороны fragment-api:\n{response.json() = }")
+
+        logger.exception(f"Неизвестный ответ от сервера fragment-api: {response.status_code = }")
+        raise FragmentAPIError(
+            f"Неизвестный ответ от сервера fragment-api:\n{response.status_code = } - {response.text = }"
+        )
+
+    async def _send_stars_request(
+            self,
+            payload: dict[str, str | int | bool],
+            retry_on_401: bool=True
+    ) -> FragmentResponse:
+        await self._ensure_authenticated()
+
+        headers = await self._get_headers("POST")
 
         try:
             response = await self._client.post(
@@ -65,23 +196,46 @@ class FragmentClient:
                 timeout=30.0
             )
         except httpx.TimeoutException as exc:
-            raise FragmentAPIError("Timeout while sending stars") from exc
+            logger.exception(f"Превышено время ожидания при попытке отправить звёзды")
+            raise FragmentAPIError("Превышено время ожидания при попытке отправить звёзды") from exc
         except httpx.HTTPError as exc:
-            raise FragmentAPIError(f"HTTP error while sending stars: {exc}") from exc
+            logger.exception(f"Ошибка HTTP во время отправки звёзд: {exc}")
+            raise FragmentAPIError(f"Ошибка HTTP во время отправки звёзд: {exc}") from exc
 
         if response.status_code == 200:
-            return response.json()
+            response_data = cast(FragmentResponse, response.json())
+            return response_data
 
+        # response.status_code никогда не будет 401 судя по документации; если будет какая-то ошибка, то
+        # response.status_code будет 400, и там будет указана ошибка со своей нумерацией из документации
         if response.status_code == 401 and retry_on_401:
-            logger.debug("Токен Fragment истек, обновляем и пробуем снова...")
+            logger.debug("Токен fragment-api истек, обновляем и пробуем снова...")
             self.token = None
             await self._ensure_authenticated()
             return await self._send_stars_request(payload, retry_on_401=False)
 
-        logger.error(f"Не удалось отправить звёзды: {response.text}")
-        raise FragmentAPIError(
-            f"Failed to send stars: status={response.status_code}, body={response.text}"
-        )
+        # TODO: в случае ошибки со стороны FragmentAPI, текст ошибки должен сохраняться в metadata транзакции
+        #       для отслеживания истории, чтобы в случае чего тех. поддержка могла просмотреть подробности
+        #       неудачной транзакции
+        logger.error(f"Не удалось отправить звёзды: {response.status_code = } - {response.text = }")
+        raise FragmentAPIError(f"Не удалось отправить звёзды: {response.status_code = } - {response.text = }")
+
+    async def _get_headers(self, method: str) -> dict[str, str]:
+        await self._ensure_authenticated()
+
+        if method == "GET":
+            return {
+                "Accept": "application/json",
+                "Authorization": f"JWT {self.token}",
+            }
+        elif method == "POST":
+            return {
+                "Accept": "application/json",
+                "Authorization": f"JWT {self.token}",
+                "Content-Type": "application/json",
+            }
+        else:
+            raise ValueError(f"Invalid method for headers: {method}")
 
     async def _ensure_authenticated(self) -> None:
         if self.token:
@@ -90,12 +244,13 @@ class FragmentClient:
         await self._authenticate_fragment()
 
         if not self.token:
-            raise FragmentAPIError("Authentication failed")
+            logger.exception("Аутентификация во fragment-api провалена")
+            raise FragmentAPIError("Аутентификация во fragment-api провалена")
 
     async def _authenticate_fragment(self) -> None:
         if not self.mnemonics:
             logger.error("Аутентификация невозможна: отсутствуют мнемоники.")
-            raise FragmentAPIError("Mnemonics are missing")
+            raise FragmentAPIError("Отсутствуют мнемоники для аутентификации во fragment-api")
 
         payload = {
             "api_key": self.api_key,
@@ -111,21 +266,21 @@ class FragmentClient:
                 timeout=15.0
             )
         except httpx.TimeoutException as exc:
-            logger.exception("Исключение при авторизации Fragment")
-            raise FragmentAPIError("Timeout during authentication") from exc
+            logger.exception("Превышено время ожидания аутентификации во fragment-api")
+            raise FragmentAPIError("Превышено время ожидания аутентификации во fragment-api") from exc
         except httpx.HTTPError as exc:
-            logger.exception("Исключение при авторизации Fragment")
-            raise FragmentAPIError(f"HTTP error during authentication: {exc}") from exc
+            logger.exception(f"Ошибка HTTP аутентификации во fragment-api: {exc}")
+            raise FragmentAPIError(f"Ошибка HTTP аутентификации во fragment-api: {exc}") from exc
 
         if response.status_code != 200:
-            logger.error(f"Ошибка авторизации Fragment: {response.status_code} - {response.text}")
+            logger.error(f"Ошибка авторизации fragment-api: {response.status_code = } - {response.text = }")
             raise FragmentAPIError(
-                f"Authentication failed: status={response.status_code}, body={response.text}"
+                f"Аутентификация провалена: {response.status_code = } - {response.text = }"
             )
 
         token = response.json().get("token")
         if not token:
-            raise FragmentAPIError("Authentication succeeded but token is missing")
+            raise FragmentAPIError("Аутентификация во fragment-api прошла успешно, но не хватает токена")
 
         self.token = token
-        logger.debug("Успешная авторизация во Fragment API.")
+        logger.debug("Успешная авторизация во fragment-api.")

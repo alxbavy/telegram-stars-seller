@@ -1,5 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from bot.callbacks import BackCallback, BackDestination, ProfileMenuCallback, ProfileAction, HistoryPageCallback
+
+from bot.callbacks import BackCallback, ProfileMenuCallback, HistoryPageCallback
+from bot.enums import BackDestination, ProfileAction
 
 
 def build_profile_kb() -> InlineKeyboardMarkup:

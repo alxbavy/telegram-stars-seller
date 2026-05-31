@@ -1,10 +1,20 @@
-import os
+from typing import cast
+
 from django.conf import settings
-from telegram import Update, InputMediaPhoto
+from telegram import InlineKeyboardMarkup, Update, InputMediaPhoto, Message
 from telegram.constants import ParseMode
 
 
-async def render_screen(update: Update, text: str, reply_markup, photo_name: str = None):
+async def render_screen(
+        update: Update,
+        text: str,
+        reply_markup: InlineKeyboardMarkup,
+        photo_name: str | None = None
+) -> Message:
+    """
+    Эта функция должна использоваться только в личном чате. Если её использовать для обработки Inline сообщений, то
+    поведение не гарантированно, и скорее всего возникнет ошибка.
+    """
     media_source = None
     if photo_name:
         image_path = settings.BASE_DIR / 'images' / photo_name
@@ -15,15 +25,16 @@ async def render_screen(update: Update, text: str, reply_markup, photo_name: str
             await update.callback_query.answer()
             try:
                 if media_source:
-                    await update.callback_query.edit_message_media(
+                    msg = cast(Message, await update.callback_query.edit_message_media(
                         media=InputMediaPhoto(media=media_source, caption=text, parse_mode=ParseMode.HTML),
                         reply_markup=reply_markup
-                    )
+                    ))
                 else:
-                    await update.callback_query.edit_message_text(
+                    msg = cast(Message, await update.callback_query.edit_message_text(
                         text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML
-                    )
-                return
+                    ))
+
+                return msg
             except Exception:
                 try:
                     await update.effective_message.delete()
@@ -35,9 +46,10 @@ async def render_screen(update: Update, text: str, reply_markup, photo_name: str
 
         kwargs = {"reply_markup": reply_markup, "parse_mode": ParseMode.HTML}
         if media_source:
-            await update.effective_message.reply_photo(photo=media_source, caption=text, **kwargs)
+            msg = await update.effective_message.reply_photo(photo=media_source, caption=text, **kwargs)
         else:
-            await update.effective_message.reply_text(text=text, **kwargs)
+            msg = await update.effective_message.reply_text(text=text, **kwargs)
+        return msg
 
     finally:
         if hasattr(media_source, 'close') and callable(media_source.close):

@@ -5,34 +5,57 @@ from core.models import GlobalSettings, ExchangeRate, PaymentMethod
 
 
 class PaymentRepository:
-    @staticmethod
-    async def get_pricing_data() -> PricingDTO:
+    model_settings: type[GlobalSettings] = GlobalSettings
+    model_exchange_rate: type[ExchangeRate] = ExchangeRate
+    model_payment_method: type[PaymentMethod] = PaymentMethod
+
+    async def get_pricing_data(self) -> PricingDTO:
         """Объединение двух SQL-запросов в один поток для производительности."""
         return PricingDTO(
-            settings=await GlobalSettings.aget_solo(),
-            exchange_rate=await ExchangeRate.aget_solo()
+            settings=await self.model_settings.aget_solo(),
+            exchange_rate=await self.model_exchange_rate.aget_solo()
         )
 
-    @staticmethod
-    async def get_payment_method_by_name(payment_method: str) -> PaymentMethod | None:
-        """Если переданного метода нет, или он неактивен, то вернётся None."""
-        return await PaymentMethod.objects.filter(name=payment_method, is_active=True).afirst()
+    async def get_payment_method_by_name(
+            self,
+            payment_method: str,
+            is_check_is_active: bool = True,
+            is_active_value: bool = True,
+            is_select_api: bool = True
+    ) -> PaymentMethod | None:
+        query = self.model_payment_method.objects.filter(name=payment_method)
 
-    @staticmethod
-    async def get_all_active_methods() -> list[PaymentMethod]:
-        """Возвращает активные методы оплаты для отображения в боте."""
-        return [
-            method async for method in PaymentMethod.objects.filter(is_active=True)
-        ]
+        if is_check_is_active:
+            query = query.filter(is_active=is_active_value)
 
-    @staticmethod
-    async def update_current_usd_rate(current_usd_rate: Decimal) -> None:
+        if is_select_api:
+            query = query.select_related("api")
+
+        return await query.afirst()
+
+    async def get_many_by(
+            self,
+            is_check_is_active: bool = True,
+            is_active_value: bool = True,
+            is_select_api: bool = True
+    ) -> list[PaymentMethod]:
+        """По умолчанию возвращает активные методы оплаты для отображения в боте."""
+        query = self.model_payment_method.objects
+
+        if is_check_is_active:
+            query = query.filter(is_active=is_active_value)
+
+        if is_select_api:
+            query = query.select_related("api")
+
+        return [method async for method in query.all()]
+
+    async def update_current_usd_rate(self, current_usd_rate: Decimal) -> None:
         """Метод для сохранения текущего курса доллара при его обновлении по таймеру."""
-        exchange_rate = await ExchangeRate.aget_solo()
+        exchange_rate = await self.model_exchange_rate.aget_solo()
         exchange_rate.usd_rate = current_usd_rate
         await exchange_rate.asave(update_fields=["usd_rate", "updated_at"])
 
-    @staticmethod
-    async def is_maintenance_mode() -> bool:
-        settings = await GlobalSettings.aget_solo()
+    async def is_maintenance_mode(self) -> bool:
+        settings = await self.model_settings.aget_solo()
         return settings.maintenance_mode

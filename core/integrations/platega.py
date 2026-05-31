@@ -31,14 +31,14 @@ class PlategaAPIError(Exception):
 
 @final
 class PlategaClient:
-    API_URL = "https://app.platega.io/"
     PAYMENT_WITH_METHOD_PATH = "transaction/process"
 
     def __init__(self) -> None:
+        self.url = cast(str, getattr(settings, "PLATEGA_API_URL", None))
         self.merchant_id = cast(str, getattr(settings, "PLATEGA_MERCHANT_ID", None))
         self.secret = cast(str, getattr(settings, "PLATEGA_SECRET", None))
 
-        if not all([self.merchant_id, self.secret]):
+        if not all([self.url, self.merchant_id, self.secret]):
             logger.error("PlategaClient не сконфигурирован.")
             raise ValueError("PlategaClient is not configured properly")
 
@@ -111,7 +111,7 @@ class PlategaClient:
 
     async def _make_request(self, method: str, path: str, data: Mapping[str, object] | None = None) -> httpx.Response:
         headers = self._get_headers(method)
-        full_url = urljoin(self.API_URL, path)
+        full_url = urljoin(self.url, path)
 
         try:
             if method == "POST":

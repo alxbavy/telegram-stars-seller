@@ -17,7 +17,10 @@ services:
       - .env
     volumes:
       - sqlite_data:/app/data
+      - persistence_pickle:/app/bot/data
+    stop_grace_period: 25s
     restart: always
 
 volumes:
   sqlite_data:
+  persistence_pickle:

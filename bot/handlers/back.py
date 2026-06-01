@@ -1,76 +1,106 @@
+from typing import cast
+
 from telegram import Update
 from telegram.ext import ContextTypes
-from bot.utils.injector import inject
 
-from core.services.star_price import StarService
-from bot.states import BotConversationState
-from bot.context import get_view_context, clear_order_draft
-from bot.callbacks import BackCallback, BackDestination
+from bot.handlers.start import start_handler
 
-from bot.renderers.main import show_main_menu
 from bot.renderers.order import (
     show_choose_quantity,
     show_custom_quantity_input,
     show_choose_recipient,
     show_enter_username,
-    show_payment_methods
+    show_payment_methods_dynamic
 )
+from bot.renderers.profile import show_profile_page
+
+from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
+from bot.utils.handlers_registry import build_async_handlers_register
+from bot.utils.type_aliases import UpdateWithContextHandler
+
+from bot.callbacks import BackCallback, cast_callback
+from bot.context import clear_profile_data, clear_temporary_messages, get_view_context
+from bot.enums import BackDestination
+from bot.states import BotConversationState
 
 
-@inject
-async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE, star_service: StarService):
+back_destination_registry: dict[BackDestination, UpdateWithContextHandler[..., BotConversationState]] = {}
+register = build_async_handlers_register(back_destination_registry)
+
+
+@register(BackDestination.MAIN_MENU)
+async def _handle_destination_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    clear_profile_data(context)
+    return await start_handler(update, context)
+
+
+@register(BackDestination.CHOOSE_QUANTITY)
+async def _handle_destination_choose_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ = await show_choose_quantity(update, context)
+    return BotConversationState.CHOOSE_QUANTITY
+
+
+@register(BackDestination.CUSTOM_QUANTITY_INPUT)
+async def _handle_destination_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ = await show_custom_quantity_input(update, context)
+    return BotConversationState.CUSTOM_QUANTITY_INPUT
+
+
+@register(BackDestination.CHOOSE_RECIPIENT)
+async def _handle_destination_choose_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ = await show_choose_recipient(update, context)
+    return BotConversationState.CHOOSE_RECIPIENT
+
+
+@register(BackDestination.ENTER_GIFT_USERNAME)
+async def _handle_destination_enter_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ = await show_enter_username(update, context)
+    return BotConversationState.ENTER_GIFT_USERNAME
+
+
+@register(BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT)
+async def _handle_destination_choose_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # При возврате на экран оплаты нам нужно заново рассчитать цены,
+    # так как мы не храним их в контексте (цены могут измениться).
+    # Берем количество звезд из черновика.
+    ctx = get_view_context(context)
+
+    # noinspection PyUnnecessaryCast
+    stars_count = cast(int, ctx.order.quantity)
+
+    cb_data = cast_callback(BackCallback, update.callback_query.data)
+    is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)
+    username = ctx.order.target_username if is_gift else None
+
+    _ = await show_payment_methods_dynamic(update, context, stars_count, is_gift=is_gift, username=username)
+
+    return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
+
+
+@register(BackDestination.PROFILE)
+async def _handle_destination_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ctx = get_view_context(context)
+    profile_data = ctx.profile_data
+    _ = await show_profile_page(update, context, profile_data)
+    return BotConversationState.PROFILE
+
+
+@register(BackDestination.REFERRALS_LIST)
+async def _handle_destination_referrals_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Заглушка для возврата к списку рефералов
+    # _ = await show_referrals_list(update, context, referrals_dto)
+    return BotConversationState.REFERRALS_LIST
+
+
+@ensure_use_active_conversation_with_callback
+async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Единый контроллер для обработки всех кнопок 'Назад'.
     Определяет куда вернуться по BackDestination и восстанавливает контекст.
     """
-    query = update.callback_query
-    cb_data: BackCallback = query.data
-    dest = cb_data.destination
+    await clear_temporary_messages(context)
 
-    ctx = get_view_context(context)
+    cb_data = cast_callback(BackCallback, update.callback_query.data)
 
-    if dest == BackDestination.MAIN_MENU:
-        clear_order_draft(context)
-        await show_main_menu(update)
-        return BotConversationState.MAIN_MENU
-
-    elif dest == BackDestination.CHOOSE_QUANTITY:
-        await show_choose_quantity(update)
-        return BotConversationState.CHOOSE_QUANTITY
-
-    elif dest == BackDestination.CUSTOM_QUANTITY_INPUT:
-        await show_custom_quantity_input(update)
-        return BotConversationState.CUSTOM_QUANTITY_INPUT
-
-    elif dest == BackDestination.CHOOSE_RECIPIENT:
-        await show_choose_recipient(update)
-        return BotConversationState.CHOOSE_RECIPIENT
-
-    elif dest == BackDestination.ENTER_GIFT_USERNAME:
-        await show_enter_username(update)
-        return BotConversationState.ENTER_GIFT_USERNAME
-
-    elif dest in (BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT):
-        # При возврате на экран оплаты нам нужно заново рассчитать цены,
-        # так как мы не храним их в контексте (цены могут измениться).
-        # Берем количество звезд из черновика.
-        quantity = ctx.order.quantity
-        sbp_price = await star_service.get_order_price(quantity, "sbp")
-        card_price = await star_service.get_order_price(quantity, "card")
-
-        is_gift = (dest == BackDestination.CHOOSE_PAYMENT_GIFT)
-        username = ctx.order.target_username if is_gift else None
-
-        await show_payment_methods(update, sbp_price, card_price, is_gift=is_gift, username=username)
-
-        return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
-
-    elif dest == BackDestination.PROFILE:
-        # Заглушка для возврата в профиль
-        # await show_profile(update, user_profile_dto)
-        return BotConversationState.PROFILE
-
-    elif dest == BackDestination.REFERRALS_LIST:
-        # Заглушка для возврата к списку рефералов
-        # await show_referrals_list(update, referrals_dto)
-        return BotConversationState.REFERRALS_LIST
+    handler = back_destination_registry[cb_data.destination]
+    return await handler(update, context)

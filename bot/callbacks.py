@@ -1,30 +1,12 @@
+from decimal import Decimal
+from typing import cast
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Optional
-from .context import RecipientMode
+
+from bot.enums import MainMenuAction, BackDestination, RecipientMode, ProfileAction
 
 
-class MainMenuAction(StrEnum):
-    BUY = "buy"
-    SUPPORT = "support"
-    PROFILE = "profile"
-
-
-class ProfileAction(StrEnum):
-    HISTORY = "history"
-    REFERRALS = "referrals"
-
-
-class BackDestination(StrEnum):
-    MAIN_MENU = "main_menu"
-    CHOOSE_QUANTITY = "choose_quantity"
-    CUSTOM_QUANTITY_INPUT = "custom_quantity_input"
-    CHOOSE_RECIPIENT = "choose_recipient"
-    ENTER_GIFT_USERNAME = "enter_gift_username"
-    CHOOSE_PAYMENT_SELF = "choose_payment_self"
-    CHOOSE_PAYMENT_GIFT = "choose_payment_gift"
-    PROFILE = "profile"
-    REFERRALS_LIST = "referrals_list"
+def cast_callback[C](callback: type[C], update_callback_query_data: str | None) -> C:
+    return cast(C, update_callback_query_data)
 
 
 @dataclass(frozen=True)
@@ -54,7 +36,11 @@ class RecipientModeCallback:
 
 @dataclass(frozen=True)
 class PaymentMethodCallback:
-    method_id: str
+    method_api: str
+    method: str
+    method_external_id: str
+    price: Decimal | None
+    commission_percent: Decimal | None
 
 
 @dataclass(frozen=True)

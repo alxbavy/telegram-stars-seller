@@ -1,35 +1,143 @@
 import json
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from telegram.ext import ExtBot
+import logging
+from typing import TypedDict, cast
+
 from django.conf import settings
-from bot.keyboards.order import build_repeat_order_kb
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpRequest, JsonResponse, HttpResponse
+
+from telegram.ext import ExtBot
+from telegram.constants import ParseMode
+
+from bot.keyboards.error import build_error_kb
+
+from core.domain.enums import TransactionStatus
+from core.services.payment import PaymentService
+from core.services.support import SupportService
+from core.business_logic_container import container
+
+
+logger = logging.getLogger(__name__)
+
+
+class PlategaRequestJson(TypedDict):
+    id: str
+    amount: float
+    currency: str
+    status: str
+    paymentMethod: int
+    payload: str
 
 
 @csrf_exempt
-async def payment_webhook(request):
+async def payment_webhook(request: HttpRequest):  # TODO: протестировать полностью
     """
-    Заглушка для обработки вебхука от платежной системы.
     Вызывает сервисы для обновления статуса и отправляет сообщение через PTB Bot.
     """
-    if request.method == "POST":
-        data = json.loads(request.body)
-        transaction_id = data.get("transaction_id")
+    if request.method != "POST":
+        return JsonResponse({"error": "method not allowed"}, status=405)
 
-        # 1. Вызов PaymentService.confirm_payment(transaction_id)
-        # transaction = await payment_service.confirm_payment(transaction_id)
+    # TODO: добавить проверку merchant_id и secret
+    data = cast(PlategaRequestJson, json.loads(request.body))
+    parsed_payload = data["payload"].split(" ")
+    user_id = int(parsed_payload[0].split("-")[1])
+    transaction_id = data.get("id")
 
-        # 2. Отправка уведомления пользователю вне ConversationHandler
-        bot: ExtBot = ExtBot(token=settings.TELEGRAM_BOT_TOKEN)
+    bot: ExtBot[None] = ExtBot(token=settings.TELEGRAM_BOT_TOKEN)
+    parse_mode = ParseMode.HTML
 
-        # Пример отправки (Состояние 12)
-        text = "😊 Заказ успешно доставлен!\n\nПополнили — ⭐ 50 звёзд\n\nСпасибо за покупку! ❤️"
-        await bot.send_photo(
-            chat_id=123456789,  # transaction.telegram_user.telegram_id
-            photo="https://dummyimage.com/600x400/000/fff&text=order_success_self.jpg",
-            caption=text,
-            reply_markup=build_repeat_order_kb()
+    message_id = int(parsed_payload[1].split("-")[1])
+    try:
+        _ = await bot.delete_message(chat_id=user_id, message_id=message_id)
+    except Exception as err:
+        logger.exception(f"Error while trying to delete message: {user_id = }, {message_id = }\n{err = }")
+        pass
+
+    async with container() as request_container:
+        support_service = await request_container.get(SupportService)
+        support_url = await support_service.get_support_url()
+
+    try:
+        async with container() as request_container:
+            payment_service = await request_container.get(PaymentService)
+            if data["status"] != "CONFIRMED":
+                transaction = await payment_service.cancel_transaction(transaction_id, data)
+            else:
+                transaction = await payment_service.confirm_payment(transaction_id)
+    except Exception as transaction_err:
+        text = (
+            f"❌ <b>Произошла ошибка!</b>\n\n"
+            f"Можешь попробовать начать новый заказ или обратиться в тех. поддержку "
+            f"с ID заказа и текстом ошибки\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
+            f"Текст ошибки:\n<pre>{transaction_err.__class__.__name__}: {transaction_err}</pre>"
         )
+        try:
+            _ = await bot.send_message(
+                chat_id=user_id, text=text,
+                reply_markup=build_error_kb(support_url), parse_mode=parse_mode
+            )
+        except Exception as err:
+            logger.exception(f"Error while sending error message in bot:\n{err = }")
+            pass
+        logger.exception(f"Error during transaction processing:\n{transaction_err = }")
+        return HttpResponse(status=200)
 
-        return JsonResponse({"status": "ok"})
-    return JsonResponse({"error": "method not allowed"}, status=405)
+    if transaction is None:
+        async with container() as request_container:
+            payment_service = await request_container.get(PaymentService)
+
+            stars_count = int(parsed_payload[2].split("-")[1])
+            target_username = ""
+            if len(parsed_payload) == 4:
+                target_username = parsed_payload[3].split("-")[1]
+            if data["status"] != "CONFIRMED":
+                status = TransactionStatus.CANCELLED
+            else:
+                status = TransactionStatus.SUCCESS
+
+            transaction = await payment_service.create_transaction(
+                transaction_id, user_id,
+                data["amount"], stars_count,
+                "Platega (Generated)", str(data["paymentMethod"]),
+                target_username,
+                status, data
+            )
+
+    if transaction.status == TransactionStatus.SUCCESS:
+        text = (
+            f"😊 <b>Заказ успешно доставлен!</b>\n\n"
+            f"Пополнили — ⭐ {transaction.amount_stars} звёзд\n"
+            f'{"Для кого — @" + transaction.target_username + "\n" if transaction.target_username != "Себе" else ""}\n'
+            f"Спасибо за покупку! ❤️\n\n"
+            f"✨ <b>Сделать ещё заказ — /start</b>"
+        )
+        reply_markup = None
+    elif transaction.status == TransactionStatus.CANCELLED:
+        text = (
+            f"⚠️ <b>Твоему заказу был присвоен статус {TransactionStatus.CANCELLED.translation}</b>\n\n"
+            f"Если ты решил не делать заказ, то можешь проигнорировать это сообщение\n\n"
+            f"В ином случае обратись в тех. поддержку с ID заказа\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>"
+        )
+        reply_markup = build_error_kb(support_url)
+    else:
+        text = (
+            f"❌ <b>Произошла ошибка при переводе звёзд!</b>\n\n"
+            f"Обратись в тех. поддержку с ID заказа и текстом ошибки\n\n"
+            f"🆔 ID заказа: <code>{transaction_id}</code>\n"
+            f"Текст ошибки:\n<pre>{json.dumps(transaction.metadata_info.payload, indent=4)}</pre>"
+        )
+        reply_markup = build_error_kb(support_url)
+
+    try:
+        _ = await bot.send_message(
+            chat_id=transaction.telegram_user.telegram_id,
+            text=text,
+            reply_markup=reply_markup, parse_mode=parse_mode
+        )
+    except Exception as err:
+        logger.exception(f"Error while sending message in bot:\n{err = }")
+        pass
+
+    return HttpResponse(status=200)

@@ -1,86 +1,258 @@
-import uuid
+from collections.abc import Mapping
 from decimal import Decimal
+from typing import final
+from uuid import UUID
+
+from django.utils.timezone import datetime, timedelta
+
+from core.dto.payment import PaymentDTO, PaymentMethodDTO
+from core.integrations.platega import PlategaClient
+from core.models import Transaction
+from core.repositories.transaction import TransactionRepository
+from core.repositories.user import UserRepository
+from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
-from core.schemas.payment import PaymentDTO
 from core.services.star_price import StarService
 from core.integrations.fragment import FragmentClient
+from core.services.user import UnregisteredUser
 
 
+class MaintenanceModeException(Exception):
+    """Исключение для технического перерыва."""
+
+
+@final
 class PaymentService:
-    '''def __init__(
+    def __init__(
             self,
-            trans_repo,
-            settings_repo,
+            trans_repo: TransactionRepository,
+            user_repo: UserRepository,
+            payment_repo: PaymentRepository,
             star_service: StarService,
+            platega_client: PlategaClient,
             fragment_client: FragmentClient
     ):
         self._trans_repo = trans_repo
-        self._settings_repo = settings_repo
+        self._user_repo = user_repo
+        self._payment_repo = payment_repo
         self._star_service = star_service
-        self._fragment_client = fragment_client'''
+        self._platega_client = platega_client
+        self._fragment_client = fragment_client
 
-    async def create_checkout(
+    async def ensure_no_maintenance_mode(self) -> None:
+        if await self._payment_repo.is_maintenance_mode():
+            raise MaintenanceModeException("maintenance_mode on True")
+
+    async def get_active_payment_methods(self) -> tuple[PaymentMethodDTO, ...]:
+        return tuple(
+            PaymentMethodDTO(
+                api_name=method.api.name,
+                name=method.name,
+                external_id=method.external_id,
+                commission_percent=method.commission_percent
+            )
+            for method in await self._payment_repo.get_many_by()
+        )
+
+    async def create_payment_and_transaction(
             self,
-            user_id: int,
-            stars_count: int,
-            method: str,
-            target_username: str = None
+            user_id: int, message_id: int,
+            price: Decimal, stars_count: int, payment_api: str, method: int | str,
+            target_username: str = ""
     ) -> PaymentDTO:
         """
-        Создает заказ, сохраняет транзакцию в БД и генерирует ссылку на оплату.
+        Обращается к внешнему API для создания платежа и получении ссылки на оплату, потом сохраняет транзакцию в БД.
+
+        Возвращает PaymentDTO:
+
+        `transaction_id` - UUID
+
+        `pay_url` - str
+
+        `price` - Decimal
+
+        `expires_in` - str
+
+        Arguments:
+
+        - `user_id` - int, Telegram ID.
+
+        - `message_id` - int, ID сообщения, для которого генерируется ссылка на оплату, чтобы вебхук мог изменить
+        это сообщение.
+
+        - `price` - Decimal, цена покупки.
+
+        - `stars_count` - int, кол-во звёзд для перевода.
+
+        - `payment_api` - str, API для создания платежа.
+
+        - `method` - int | str, если payment_api = "Platega", то это должен быть int, который соответствует
+        нужному методу, другие API сейчас не поддерживаются.
+        Значения для int: 2 - СБП, 11 - Карточный эквайринг, 12 - Международный эквайринг, 13 - Криптовалюта.
+        В данный момент поддерживается только RUB.
+
+        - `target_username` - str, по умолчанию "", если указан, то этому человеку будет сделан перевод звёзд.
         """
-        settings = self._settings_repo.get_active_settings()
-        if settings.maintenance_mode:
-            raise Exception("maintenance_mode on True")
 
-        amount = await self._star_service.get_order_price(stars_count, method)
+        user_buyer = await self._user_repo.get_by_telegram_id(user_id)
+        if user_buyer is None:
+            raise UnregisteredUser(user_id)
 
-        order_id = str(uuid.uuid4())
-        transaction = self._trans_repo.create_transaction(
-            user_id=user_id,
-            transaction_id=order_id,
-            amount_fiat=amount,
+        def to_str(obj: object) -> str:
+            return str(obj).strip()
+
+        if "platega" in payment_api.lower():
+            description = f"TgId:{user_id}\nUserId:{user_id}"
+            payload = (
+                f"user_id-{to_str(user_id)} "
+                f"message_id-{to_str(message_id)} "
+                f"stars_count-{to_str(stars_count)}"
+            ).strip()
+            if target_username:
+                payload += f" target_username-{to_str(target_username)}"
+            payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
+                int(method),
+                float(price), "RUB",
+                description,
+                payload=payload
+            )
+        else:
+            raise NotImplementedError("Only Platega API is supported now")
+
+        _ = await self._trans_repo.create_transaction(
+            transaction_id=payment_dto.transaction_id,
+            user=user_buyer,
+            amount_fiat=float(payment_dto.price),
             amount_stars=stars_count,
-            payment_method=method,
+            payment_method=f"{payment_api} - {method}",
+            expires_in=payment_dto.expires_in,
+            target_username=target_username
+        )
+
+        return payment_dto
+
+    async def create_transaction(
+            self,
+            transaction_id: str, user_id: int,
+            price: float, stars_count: int,
+            payment_api: str, method: str,
+            target_username: str = "",
+            status: str = TransactionStatus.PENDING, payload: Mapping[str, object] | None = None
+    ) -> Transaction:
+        """
+        Создаёт транзакцию с нуля. Должно вызываться в вебхуке, если по какой-то причине транзакция отсутствует в БД.
+        """
+        telegram_user = await self._user_repo.get_by_telegram_id(user_id)
+        if telegram_user is None:
+            raise UnregisteredUser(user_id)
+
+        return await self._trans_repo.create_transaction(
+            transaction_id=UUID(transaction_id),
+            user=telegram_user,
+            amount_fiat=price,
+            amount_stars=stars_count,
+            payment_method=f"{payment_api} - {method}",
             target_username=target_username,
-            status="PENDING"
+            status=status,
+            json_payload=payload
         )
 
-        pay_url = await self._get_provider_link(order_id, amount, method)
-
-        return PaymentDTO(
-            transaction_id=transaction.id,
-            pay_url=pay_url,
-            amount=amount
-        )
-
-    async def _get_provider_link(self, order_id: str, amount: Decimal, method: str) -> str:
-        """
-        Интеграция с API платежных систем.
-        """
-        return f"https://test.link/pay/{order_id}?amount={amount}"
-
-    async def confirm_payment(self, transaction_id: str):
+    async def confirm_payment(self, transaction_id: str) -> Transaction | None:
         """
         Вызывается при получении Вебхука от платежки.
+
+        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
+
+        - Если `transaction.status == "SUCCESS"`, то сразу вернётся соответствующая транзакция.
+
+        - Если перевод звёзд пройдёт успешно, то `transaction.status` станет `"SUCCESS"`, при неудачном переводе -
+        `"CANCELLED"`.
+
+        - Если при переводе звёзд возникнет ошибка, то `transaction.status` сам станет `"FAILED"`, и ошибка пробросится
+        дальше.
         """
         # TODO: Должно вызываться не только при получении Вебхука от платежки,
-        # TODO: но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
-        # TODO: (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
-        transaction = await self._trans_repo.get_by_external_id(transaction_id)
-        if transaction and transaction.status == TransactionStatus.PENDING:
-            is_send_success, payload = await self._fragment_client.send_stars(
+        #       но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
+        #       (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
+        transaction_uuid = UUID(transaction_id)
+
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        if transaction is None:
+            return None
+
+        if transaction.status == TransactionStatus.SUCCESS:
+            return transaction
+
+        try:
+            response = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )
 
-            if is_send_success:
-                new_transaction_status = TransactionStatus.SUCCESS
-            else:
-                new_transaction_status = TransactionStatus.FAILED
-                await self._trans_repo.update_metadata(transaction, payload)
-            await self._trans_repo.update_status(transaction, new_transaction_status)
+        except Exception as e:
+            transaction = await self._trans_repo.update_payload(
+                transaction,
+                {"error_msg": str(e)}
+            )
+            _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
+            raise e
 
-            return transaction
+        transaction = await self._trans_repo.update_payload(transaction, response)
 
-        return None
+        if not response["success"]:
+            new_transaction_status = TransactionStatus.CANCELLED
+        else:
+            new_transaction_status = TransactionStatus.SUCCESS
+        return await self._trans_repo.update_status(transaction, new_transaction_status)
+
+
+    async def cancel_transaction(
+            self,
+            transaction_id: str,
+            payload: Mapping[str, object] | None = None
+    ) -> Transaction | None:
+        """
+        Выставляет транзакции статус `"CANCELLED"`.
+
+        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
+        """
+
+        transaction_uuid = UUID(transaction_id)
+
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        if transaction is None:
+            return None
+
+        if payload is not None:
+            transaction = await self._trans_repo.update_payload(transaction, payload)
+
+        return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+
+
+    async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
+        """
+        Удаляет транзакции (или одну) со статусом PENDING, у которых истекло время ожидания.
+
+        Arguments:
+
+        - `expires_in` - имеет формат HH:MM:SS (%H:%M:%S в datetime).
+
+        - `transaction_ids` - list[UUID] | UUID | None, если указано, то удалит либо транзакции с указанными ID,
+        либо конкретную транзакцию, иначе удалит все найденные транзакции (в каждом случае проверяется
+        статус PENDING и время жизни).
+        """
+        expires_in_td = datetime.strptime(expires_in, "%H:%M:%S")
+        expires_in_td = timedelta(
+            hours=expires_in_td.hour,
+            minutes=expires_in_td.minute,
+            seconds=expires_in_td.second
+        )
+        await self._trans_repo.delete_expired_transactions(expires_in_td, transaction_ids)
+
+    async def _get_provider_link(self, order_id: str, amount: Decimal, method: str) -> str:
+        """
+        В данный момент просто заглушка.
+
+        Интеграция с API платежных систем.
+        """
+        return f"https://test.link/pay/{order_id}?amount={amount}"

@@ -201,7 +201,7 @@ class PaymentService:
 
         transaction = await self._trans_repo.update_payload(transaction, response)
         if not response["success"]:
-            new_transaction_status = TransactionStatus.CANCELLED
+            new_transaction_status = TransactionStatus.FAILED
         else:
             new_transaction_status = TransactionStatus.SUCCESS
         return await self._trans_repo.update_status(transaction, new_transaction_status)

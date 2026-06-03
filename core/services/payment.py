@@ -191,20 +191,22 @@ class PaymentService:
                 transaction.telegram_user.username, transaction.amount_stars
             )
 
-        except Exception as e:
-            transaction = await self._trans_repo.update_payload(
+            transaction = await self._trans_repo.update_payload(transaction, response)
+            return await self._trans_repo.update_status(
                 transaction,
-                {"error_msg": str(e)}
+                TransactionStatus.SUCCESS if response["success"] else TransactionStatus.FAILED
             )
-            _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
-            raise e
 
-        transaction = await self._trans_repo.update_payload(transaction, response)
-        if not response["success"]:
-            new_transaction_status = TransactionStatus.FAILED
-        else:
-            new_transaction_status = TransactionStatus.SUCCESS
-        return await self._trans_repo.update_status(transaction, new_transaction_status)
+        except Exception as err:
+            try:
+                transaction = await self._trans_repo.update_payload(
+                    transaction,
+                    {"error_msg": str(err)}
+                )
+                _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
+            except Exception as db_err:
+                raise db_err from err
+            raise err
 
     async def cancel_transaction(
             self,

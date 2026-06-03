@@ -5,6 +5,7 @@ from typing import cast
 from telegram.ext import ExtBot
 
 from django.conf import settings
+from django.utils.crypto import constant_time_compare
 from django.http import HttpRequest
 
 from bot.keyboards.error import build_error_kb
@@ -26,7 +27,10 @@ def is_authenticated(headers: PlategaHeaders) -> bool:
 
     if merchant_id is None or secret_key is None:
         return False
-    if merchant_id != settings.PLATEGA_MERCHANT_ID or secret_key != settings.PLATEGA_SECRET:
+    if (
+            not constant_time_compare(str(merchant_id), settings.PLATEGA_MERCHANT_ID) or
+            not constant_time_compare(str(secret_key), settings.PLATEGA_SECRET)
+    ):
         return False
 
     return True

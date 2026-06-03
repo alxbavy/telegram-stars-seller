@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from urllib.parse import urljoin
 from typing import NotRequired, TypedDict, final, cast
@@ -195,8 +194,7 @@ class FragmentClient:
 
         try:
             if method == "POST":
-                json_data = json.dumps(data).encode("utf-8")
-                response = await self._client.post(full_url, json=json_data, headers=headers, timeout=timeout)
+                response = await self._client.post(full_url, json=data, headers=headers, timeout=timeout)
             else:
                 response = await self._client.get(full_url, headers=headers, timeout=timeout)
 

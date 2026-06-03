@@ -5,28 +5,17 @@ from uuid import UUID
 
 import httpx
 import re
-import json
 import logging
 from urllib.parse import urljoin
-from typing import TypedDict, cast, final
+from typing import cast, final
 
 from django.conf import settings
 
 from core.dto.payment import PaymentDTO
+from core.integrations.platega.schemas import PlategaAPIError, TransactionCreationResponse
 
 
 logger = logging.getLogger(__name__)
-
-
-class TransactionCreationResponse(TypedDict):
-    transactionId: str
-    redirect: str
-    paymentDetails: str | dict[str, int | str]
-    expiresIn: str
-
-
-class PlategaAPIError(Exception):
-    """Базовая ошибка при работе с API Platega."""
 
 
 @final
@@ -63,7 +52,7 @@ class PlategaClient:
             expires_in="00:30:00"
         )
 
-        description_pattern = re.compile(r"^TgId:\d+\RUserId:\d+$")
+        description_pattern = re.compile(r"^TgId:\d+\nUserId:\d+$")
         if not description_pattern.search(description):
             raise ValueError("Platega payment description is invalid")
 
@@ -85,10 +74,10 @@ class PlategaClient:
         if response.status_code == 200:
             data = cast(TransactionCreationResponse, response.json())
 
-            price_pattern = re.compile(r"^(\S+)")
             if isinstance(data["paymentDetails"], dict):
                 price = str(data["paymentDetails"]["amount"])
             else:
+                price_pattern = re.compile(r"^(\S+)")
                 price = price_pattern.match(data["paymentDetails"]).group()
 
             return PaymentDTO(
@@ -115,8 +104,7 @@ class PlategaClient:
 
         try:
             if method == "POST":
-                json_data = json.dumps(data).encode("utf-8")
-                response = await self._client.post(full_url, json=json_data, headers=headers, timeout=30.0)
+                response = await self._client.post(full_url, json=data, headers=headers, timeout=30.0)
             else:
                 response = await self._client.get(full_url, headers=headers, timeout=30.0)
 

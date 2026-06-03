@@ -2,7 +2,7 @@ from typing import final
 from dishka import Provider, Scope, provide
 
 from core.integrations.fragment import FragmentClient
-from core.integrations.platega import PlategaClient
+from core.integrations.platega.client import PlategaClient
 from core.repositories.payment import PaymentRepository
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository

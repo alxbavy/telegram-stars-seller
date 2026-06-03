@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import final
@@ -6,7 +7,8 @@ from uuid import UUID
 from django.utils.timezone import datetime, timedelta
 
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
-from core.integrations.platega import PlategaClient
+from core.integrations.platega.client import PlategaClient
+from core.integrations.platega.schemas import PaymentPayloadDict
 from core.models import Transaction
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
@@ -104,18 +106,18 @@ class PaymentService:
 
         if "platega" in payment_api.lower():
             description = f"TgId:{user_id}\nUserId:{user_id}"
-            payload = (
-                f"user_id-{to_str(user_id)} "
-                f"message_id-{to_str(message_id)} "
-                f"stars_count-{to_str(stars_count)}"
-            ).strip()
+            payload: PaymentPayloadDict = {
+                "user_id": user_id,
+                "message_id": message_id,
+                "stars_count": stars_count,
+            }
             if target_username:
-                payload += f" target_username-{to_str(target_username)}"
+                payload["target_username"] = target_username
             payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
                 int(method),
                 float(price), "RUB",
                 description,
-                payload=payload
+                payload=json.dumps(payload, ensure_ascii=False)
             )
         else:
             raise NotImplementedError("Only Platega API is supported now")
@@ -198,13 +200,11 @@ class PaymentService:
             raise e
 
         transaction = await self._trans_repo.update_payload(transaction, response)
-
         if not response["success"]:
             new_transaction_status = TransactionStatus.CANCELLED
         else:
             new_transaction_status = TransactionStatus.SUCCESS
         return await self._trans_repo.update_status(transaction, new_transaction_status)
-
 
     async def cancel_transaction(
             self,
@@ -227,7 +227,6 @@ class PaymentService:
             transaction = await self._trans_repo.update_payload(transaction, payload)
 
         return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
-
 
     async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """

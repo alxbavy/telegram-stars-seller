@@ -14,7 +14,7 @@ from bot.utils.injector import inject
 from bot.context import get_view_context
 
 from core.integrations.fragment import FragmentAPIError
-from core.integrations.platega import PlategaAPIError
+from core.integrations.platega.schemas import PlategaAPIError
 from core.services.payment import MaintenanceModeException
 from core.services.support import SupportService
 

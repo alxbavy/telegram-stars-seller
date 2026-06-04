@@ -19,7 +19,7 @@ from telegram.warnings import PTBUserWarning
 
 from bot.handlers.error import error_handler
 from bot.middlewares.user import register_user_middleware
-from bot.router import get_conversation_handler
+from bot.router import get_conversation_handler, get_debug_handlers
 
 from core.services.payment import PaymentService
 from core.ioc import BusinessLogicProvider
@@ -47,9 +47,12 @@ class Command(BaseCommand):
             self,
             application: DefaultApplication
     ) -> None:
-        _ = await application.bot.set_my_commands([
-            BotCommand("start", "Сделать новый заказ"),
-        ])
+        commands = [BotCommand("start", "Сделать новый заказ")]
+        if settings.DEBUG:
+            user_warning = "Режим отладки - если ты обычный пользователь, сообщи об ошибке в тех. поддержку"
+            commands.append(BotCommand("balance", user_warning))
+            commands.append(BotCommand("prices", user_warning))
+        _ = await application.bot.set_my_commands(commands)
 
         container = cast(AsyncContainer, application.bot_data["dishka_container"])
         async with container() as request_container:
@@ -106,6 +109,11 @@ class Command(BaseCommand):
 
         application.add_handler(TypeHandler(Update, register_user_middleware), group=-1)
         application.add_handler(get_conversation_handler())
+
+        if settings.DEBUG:
+            handlers = get_debug_handlers()
+            for handler in handlers:
+                application.add_handler(handler)
 
         self.stdout.write("Бот настроен! Пытаемся подключиться к серверу Telegram...")
         application.run_polling()

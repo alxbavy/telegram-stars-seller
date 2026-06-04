@@ -29,7 +29,7 @@ from bot.cleanup import clear_specific_transaction
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
-from core.integrations.fragment import FragmentClient
+from core.integrations.fragment.client import FragmentClient
 
 from core.services.payment import PaymentService
 from core.services.support import SupportService

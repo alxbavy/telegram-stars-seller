@@ -13,7 +13,7 @@ from bot.utils.injector import inject
 
 from bot.context import get_view_context
 
-from core.integrations.fragment import FragmentAPIError
+from core.integrations.fragment.schemas import FragmentAPIError, FragmentAPITooManyRequests
 from core.integrations.platega.schemas import PlategaAPIError
 from core.services.payment import MaintenanceModeException
 from core.services.support import SupportService
@@ -46,6 +46,19 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "❌ <b>Произошла ошибка. Можешь прочитать текст ошибки, и, если уверен, попробовать снова</b>\n\n"
             "Также, можешь начать новый заказ, или вернуться назад, если есть возможность, или "
             "обратиться в тех. поддержку с текстом ошибки\n\n"
+            f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
+        )
+        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
+
+    elif isinstance(context.error, FragmentAPITooManyRequests):
+        retry_after = str(context.error.retry_after) if context.error.retry_after else ""
+        text = (
+            f"⚠️ <b>Fragment перегружен...</b>\n\n"
+            f"{
+            'Попробуй последнее действие снова через ' + retry_after + ' секунд или обратись в тех. поддержку' if retry_after
+            else 'Обратись в тех. поддержку'
+            }"
+            f" с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)

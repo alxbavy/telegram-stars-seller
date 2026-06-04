@@ -16,7 +16,7 @@ from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
 from core.services.star_price import StarService
-from core.integrations.fragment import FragmentClient
+from core.integrations.fragment.client import FragmentClient
 from core.services.user import UnregisteredUser
 
 

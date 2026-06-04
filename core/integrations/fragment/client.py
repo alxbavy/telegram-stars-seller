@@ -1,47 +1,27 @@
 import asyncio
 import logging
 from urllib.parse import urljoin
-from typing import NotRequired, TypedDict, final, cast
+from typing import final, cast
 from collections.abc import Mapping
 
 import httpx
 
 from django.conf import settings
 
+from core.integrations.fragment.schemas import BalanceResponse, CurrentPricesResponse, FragmentAPIError, FragmentAPITooManyRequests, SendStarsResponse
+from core.integrations.fragment.utils import parse_retry_after
 from core.models import FragmentAPI
 
 
 logger = logging.getLogger(__name__)
 
 
-class FragmentAPIError(Exception):
-    """Базовая ошибка клиента Fragment API."""
-
-
-class Sender(TypedDict):
-    phone_number: str
-    name: NotRequired[str | None]
-
-
-class FragmentResponse(TypedDict):
-    success: bool | None
-    id: NotRequired[str]
-    receiver: str
-    goods_quantity: NotRequired[int | None]
-    sender: Sender | None
-    ton_price: str | None
-    fee_ton: str | None
-    ref_id: str | None
-    status: str
-    type: str
-    error: object
-    created_at: str
-
-
 @final
 class FragmentClient:
-    SEND_STARS_PATH = "order/stars/"
+    GET_CURRENT_PRICES = "misc/prices/"
+    GET_WALLET_BALANCE = "misc/wallet/"
     GET_USER_PATH = "misc/user/"
+    SEND_STARS_PATH = "order/stars/"
 
     def __init__(self):
         self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))
@@ -85,7 +65,15 @@ class FragmentClient:
         #     return False
         return await self._find_user_by_username(username)
 
-    async def send_stars(self, username: str, amount_stars: int) -> FragmentResponse:
+    async def check_is_enough_currency_for_stars(self, amount_stars: int):
+        raise NotImplementedError("Проверка баланса для перевода звёзд пока не готова")
+        current_prices = await self.get_current_prices()
+        if current_prices is None:
+            logger.warning("dummy")
+            raise FragmentAPINoPricesWarning("dummy")
+        balance = await self.get_wallet_balance()
+
+    async def send_stars(self, username: str, amount_stars: int) -> SendStarsResponse:
         """
         Принимает `username` и `amount_stars`.
 
@@ -142,6 +130,16 @@ class FragmentClient:
 
         return await self._send_stars_request(payload)
 
+    async def get_current_prices(self):
+        response = await self._make_request("GET", self.GET_CURRENT_PRICES)
+        response_data = cast(CurrentPricesResponse, response.json())
+        return response_data["stars"]
+
+    async def get_wallet_balance(self):
+        response = await self._make_request("GET", self.GET_WALLET_BALANCE)
+        response_data = cast(BalanceResponse, response.json())
+        return response_data["balances"]
+
     async def _find_user_by_username(self, username: str) -> bool:
         """
         Принимает username без знака `@`.
@@ -174,11 +172,11 @@ class FragmentClient:
             f"Неизвестный ответ от сервера fragment-api:\n{response.status_code = } - {response.text = }"
         )
 
-    async def _send_stars_request(self, payload: dict[str, str | int | bool]) -> FragmentResponse:
+    async def _send_stars_request(self, payload: dict[str, str | int | bool]) -> SendStarsResponse:
         response = await self._make_request("POST", self.SEND_STARS_PATH, payload)
 
         if response.status_code == 200:
-            response_data = cast(FragmentResponse, response.json())
+            response_data = cast(SendStarsResponse, response.json())
             return response_data
 
         logger.error(f"Не удалось отправить звёзды: {response.status_code = } - {response.text = }")
@@ -187,7 +185,7 @@ class FragmentClient:
     async def _make_request(
             self,
             method: str, path: str, data: Mapping[str, object] | None = None,
-            timeout: float = 30.0
+            timeout: float = 30.0, retry_on_429: bool = True
     ) -> httpx.Response:
         headers = await self._get_headers(method)
         full_url = urljoin(self.url, path)
@@ -209,6 +207,28 @@ class FragmentClient:
         if response.status_code in [401, 403]:
             logger.debug(f"Токен fragment-api истек;\n{response.status_code = } - {response.text = }")
             raise FragmentAPIError("Токен fragment-api истек")
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "missing")
+            error_msg = f"Слишком много запросов по пути {full_url}"
+
+            if retry_after == "missing":
+                retry_after = None
+
+            if isinstance(retry_after, str):
+                retry_after = parse_retry_after(retry_after)
+            elif not isinstance(retry_after, (int, float)):
+                retry_after = None
+
+            if retry_after is not None:
+                if retry_on_429 and retry_after <= 30.0:
+                    await asyncio.sleep(retry_after)
+                    return await self._make_request(method, path, data=data, timeout=timeout, retry_on_429=False)
+                else:
+                    error_msg += f", {retry_after = }s"
+
+            logger.exception(error_msg)
+            raise FragmentAPITooManyRequests(retry_after, error_msg)
 
         return response
 

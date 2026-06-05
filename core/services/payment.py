@@ -7,6 +7,7 @@ from uuid import UUID
 from django.utils.timezone import datetime, timedelta
 
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
+from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.client import PlategaClient
 from core.integrations.platega.schemas import PaymentPayloadDict
 from core.models import Transaction
@@ -187,7 +188,7 @@ class PaymentService:
             return transaction
 
         try:
-            response = await self._fragment_client.send_stars(
+            response: SendStarsResponse = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )
 

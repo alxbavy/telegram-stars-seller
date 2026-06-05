@@ -62,4 +62,3 @@ class SendStarsResponse(TypedDict):
     type: str
     error: object
     created_at: Annotated[str, datetime]
-    bot_warning: NotRequired[str]

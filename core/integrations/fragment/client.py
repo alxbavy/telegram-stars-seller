@@ -143,18 +143,18 @@ class FragmentClient:
         если такой возможности нет, с помощью `try except`.
         """
         # На случай, если понадобится заглушка
-        # return {
-        #     "success": True,
-        #     "receiver": "dummy_receiver",
-        #     "sender": {"phone_number": "dummy_phone_number"},
-        #     "ton_price": "dummy_ton_pice",
-        #     "fee_ton": "dummy_fee_ton",
-        #     "ref_id": "dummy_ref_id",
-        #     "status": "dummy_status",
-        #     "type": "dummy_type",
-        #     "error": "dummy_error",
-        #     "created_at": "dummy_created_at",
-        # }
+        return {
+            "success": True,
+            "receiver": "dummy_receiver",
+            "sender": {"phone_number": "dummy_phone_number"},
+            "price": {"currency": self.currency, "amount": "1337.0"},
+            "fee": {"currency": self.currency, "amount": "1337.0"},
+            "ref_id": "dummy_ref_id",
+            "status": "dummy_status",
+            "type": "dummy_type",
+            "error": "dummy_error",
+            "created_at": "dummy_created_at",
+        }
 
         username = username.strip()
 

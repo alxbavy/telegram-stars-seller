@@ -1,3 +1,7 @@
+import asyncio
+import json
+from random import randint
+
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpRequest, HttpResponse
@@ -17,7 +21,7 @@ from core.integrations.platega.webhook_utils import (
 
 
 @csrf_exempt
-async def payment_webhook(request: HttpRequest):  # TODO: протестировать полностью
+async def payment_webhook(request: HttpRequest) -> HttpResponse:  # TODO: протестировать полностью
     """
     Вызывает сервисы для обновления статуса и отправляет сообщение через PTB Bot.
     """
@@ -45,4 +49,19 @@ async def payment_webhook(request: HttpRequest):  # TODO: протестиров
         transaction = await create_missing_transaction(data, parsed_payload)
 
     await safe_notify_user(bot, parse_mode, transaction, support_url)
+    return HttpResponse(status=200)
+
+
+@csrf_exempt
+async def test_webhook(request: HttpRequest) -> HttpResponse:
+    id = randint(1, 2)
+    print(f"test_webhook {id} called!")
+
+    print(f"awaiting 5s for {id}")
+    await asyncio.sleep(5)
+    print(f"awaited for {id}")
+
+    headers = request.headers
+    print(json.dumps(headers, indent=2))
+
     return HttpResponse(status=200)

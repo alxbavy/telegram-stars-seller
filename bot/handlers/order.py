@@ -90,8 +90,8 @@ async def _handle_custom_quantity_input_helper(
         running_users.discard(user_id)
 
 
+# Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
 async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
     return await _handle_custom_quantity_input_helper(update, context)
 
 
@@ -167,8 +167,8 @@ async def _handle_gift_username_helper(
         running_users.discard(user_id)
 
 
+# Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
 async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
     return await _handle_gift_username_helper(update, context)
 
 

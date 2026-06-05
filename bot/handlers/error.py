@@ -2,6 +2,9 @@ import logging
 import traceback
 import json
 import pickle
+from dataclasses import is_dataclass, asdict
+from decimal import Decimal
+from typing import override
 
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
@@ -22,6 +25,16 @@ from core.services.support import SupportService
 logger = logging.getLogger(__name__)
 
 
+class DataclassEncoder(json.JSONEncoder):
+    @override
+    def default(self, o: object):
+        if is_dataclass(o) and not isinstance(o, type):
+            return asdict(o)
+        if isinstance(o, Decimal):
+            return str(o)
+        return super().default(o)
+
+
 @inject
 async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYPE, support_service: SupportService) -> None:
     logger.error("Произошло исключение при обработке обновления:", exc_info=context.error)
@@ -31,7 +44,7 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
 
-    logger.debug(f"Update: {json.dumps(update_str, ensure_ascii=False, indent=2)}")
+    logger.debug(f"Update: {json.dumps(update_str, cls=DataclassEncoder, ensure_ascii=False, indent=2)}")
     logger.debug(f"Traceback: {tb_string}")
 
     if not isinstance(update, Update):

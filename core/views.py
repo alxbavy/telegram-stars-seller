@@ -52,16 +52,23 @@ async def payment_webhook(request: HttpRequest) -> HttpResponse:  # TODO: про
     return HttpResponse(status=200)
 
 
+running_webhooks: set[int] = set()
+
+
 @csrf_exempt
 async def test_webhook(request: HttpRequest) -> HttpResponse:
-    id = randint(1, 2)
-    print(f"test_webhook {id} called!")
+    webhook_id = randint(1, 2)
+    if webhook_id in running_webhooks:
+        print(f"test_webhook {webhook_id} is already running")
+        return HttpResponse(status=200)
 
-    print(f"awaiting 5s for {id}")
+    print(f"test_webhook {webhook_id} called!")
+
+    print(f"awaiting 5s for {webhook_id}")
     await asyncio.sleep(5)
-    print(f"awaited for {id}")
+    print(f"awaited for {webhook_id}")
 
-    headers = request.headers
+    headers = dict(request.headers)
     print(json.dumps(headers, indent=2))
 
     return HttpResponse(status=200)

@@ -175,9 +175,9 @@ async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYP
 @inject
 async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        payment_service: PaymentService
+        fragment_client: FragmentClient, payment_service: PaymentService
 ):
-    # Если maintenance_mode, выбросится исключение, которое поймается в error_handler
+    # Если maintenance_mode, выбросится исключение для обработки в error_handler
     await payment_service.ensure_no_maintenance_mode()
 
     cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
@@ -186,7 +186,9 @@ async def _handle_payment_method_helper(
     ctx.order.payment_method = cb_data.method
 
     # noinspection PyUnnecessaryCast
-    stars_count = cast(int, ctx.order.quantity)
+    amount_stars = cast(int, ctx.order.quantity)
+    # Если не получится определить, хватает ли средств для перевода звёзд, выбросится исключение для обработки в error_handler
+    await fragment_client.check_is_enough_currency_for_stars(amount_stars)
 
     if cb_data.price is None:
         raise NotImplementedError("needs static implementation")
@@ -200,7 +202,7 @@ async def _handle_payment_method_helper(
         user_id=update.effective_user.id,
         message_id=update.effective_message.message_id,
         price=cb_data.price,
-        stars_count=stars_count,
+        stars_count=amount_stars,
         payment_api=cb_data.method_api,
         method=method_id,
         target_username=ctx.order.target_username
@@ -225,7 +227,7 @@ async def _handle_payment_method_helper(
     expires_in_minutes = str(ceil(expires_in_td.total_seconds() / 60))
     msg = await show_order_confirmation(
         update, context,
-        stars_count, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,
+        amount_stars, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,
         is_gift, ctx.order.target_username
     )
 

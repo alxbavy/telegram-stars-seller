@@ -1,46 +1,43 @@
+from typing import Annotated, TypedDict, NotRequired, Protocol
+from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, TypedDict, NotRequired, final
+from uuid import UUID
 
 
-class FragmentAPIError(Exception):
-    """Базовая ошибка клиента Fragment API."""
-
-
-@final
-class FragmentAPITooManyRequests(Exception):
-    """Ошибка для HTTP со статусом 429."""
-    def __init__(self, retry_after: int | float | None = None, message: str | None = None) -> None:
-        self.retry_after = retry_after
-        self.message = message
-        super().__init__(self.message)
-
-
-class StarsJSON(TypedDict):
-    quantity: int
-    price: str
+class HasCurrency(TypedDict):
     currency: str
-    updated_at: str
 
 
-class PremiumJSON(TypedDict):
-    months: int
-    price: str
-    currency: str
-    updated_at: str
+class HasPrice(TypedDict):
+    price: Annotated[str, Decimal]
 
 
-class CurrentPricesResponse(TypedDict):
-    stars: tuple[StarsJSON] | None
-    premium: tuple[PremiumJSON] | None
+class HasUpdatedAt(TypedDict):
+    updated_at: Annotated[str, datetime]
 
 
-class BalanceForCurrencyJSON(TypedDict):
-    currency: str
+class HasAmount(TypedDict):
     amount: Annotated[str, Decimal]
 
 
+class StarsJSON(HasCurrency, HasPrice, HasUpdatedAt):
+    quantity: int
+
+
+class PremiumJSON(HasCurrency, HasPrice, HasUpdatedAt):
+    months: int
+
+
+class CurrentPricesResponse(TypedDict):
+    stars: tuple[StarsJSON, ...] | None
+    premium: tuple[PremiumJSON, ...] | None
+
+
+class BalanceForCurrencyJSON(HasCurrency, HasAmount): pass
+
+
 class BalanceResponse(TypedDict):
-    balances: tuple[BalanceForCurrencyJSON]
+    balances: tuple[BalanceForCurrencyJSON, ...]
 
 
 class Sender(TypedDict):
@@ -48,16 +45,21 @@ class Sender(TypedDict):
     name: NotRequired[str | None]
 
 
+class StarsPrice(HasCurrency, HasAmount): pass
+class StarsFee(HasCurrency, HasAmount): pass
+
+
 class SendStarsResponse(TypedDict):
     success: bool | None
-    id: NotRequired[str]
+    id: NotRequired[Annotated[str, UUID]]
     receiver: str
     goods_quantity: NotRequired[int | None]
     sender: Sender | None
-    ton_price: str | None
-    fee_ton: str | None
+    price: StarsPrice | None
+    fee: StarsFee | None
     ref_id: str | None
     status: str
     type: str
     error: object
-    created_at: str
+    created_at: Annotated[str, datetime]
+    bot_warning: NotRequired[str]

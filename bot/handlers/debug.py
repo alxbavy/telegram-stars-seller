@@ -10,7 +10,7 @@ from core.integrations.fragment.client import FragmentClient
 
 @inject
 async def _balance_handler_helper(update: Update, context: ContextTypes.DEFAULT_TYPE, fragment_client: FragmentClient) -> None:
-    balance = await fragment_client.get_wallet_balance()
+    balance = await fragment_client.get_wallet_balances()
     text = f"<pre>{json.dumps(balance, indent=2, ensure_ascii=False)}</pre>"
     _ = await update.effective_user.send_message(text, parse_mode=ParseMode.HTML)
 

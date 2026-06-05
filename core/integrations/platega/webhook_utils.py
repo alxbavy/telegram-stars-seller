@@ -98,8 +98,7 @@ async def safe_process_transaction(
     except Exception as transaction_err:
         text = (
             f"❌ <b>Произошла ошибка!</b>\n\n"
-            f"Можешь попробовать начать новый заказ или обратиться в тех. поддержку "
-            f"с ID заказа и текстом ошибки\n"
+            f"Обратись в тех. поддержку с ID заказа и текстом ошибки или можешь сделать новый заказ с помощью /start\n"
             f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
             f"Текст ошибки:\n<pre>{transaction_err.__class__.__name__}: {transaction_err}</pre>"
         )
@@ -110,7 +109,7 @@ async def safe_process_transaction(
             )
         except Exception as err:
             logger.exception(f"Error while sending error message in bot:\n{err = }")
-            pass
+
         logger.exception(f"Error during transaction processing:\n{transaction_err = }")
         return False, None
 

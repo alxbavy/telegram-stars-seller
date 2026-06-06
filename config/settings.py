@@ -19,6 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
+    USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
 )
 
@@ -35,10 +36,17 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
 
 FRAGMENT_API_URL = env('FRAGMENT_API_URL')
+FRAGMENT_CURRENCY = env('FRAGMENT_CURRENCY')
 
 PLATEGA_API_URL = env('PLATEGA_API_URL')
 PLATEGA_MERCHANT_ID = env('PLATEGA_MERCHANT_ID')
 PLATEGA_SECRET = env('PLATEGA_SECRET')
+
+USE_SSL = env('USE_SSL')
+
+if USE_SSL:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
 
 
 import django_stubs_ext
@@ -80,7 +88,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -132,7 +139,7 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
     },
 }
 
@@ -171,5 +178,5 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'static'

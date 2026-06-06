@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import final
@@ -6,7 +7,9 @@ from uuid import UUID
 from django.utils.timezone import datetime, timedelta
 
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
-from core.integrations.platega import PlategaClient
+from core.integrations.fragment.schemas import SendStarsResponse
+from core.integrations.platega.client import PlategaClient
+from core.integrations.platega.schemas import PaymentPayloadDict
 from core.models import Transaction
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
@@ -14,7 +17,7 @@ from core.repositories.payment import PaymentRepository
 
 from core.domain.enums import TransactionStatus
 from core.services.star_price import StarService
-from core.integrations.fragment import FragmentClient
+from core.integrations.fragment.client import FragmentClient
 from core.services.user import UnregisteredUser
 
 
@@ -104,18 +107,18 @@ class PaymentService:
 
         if "platega" in payment_api.lower():
             description = f"TgId:{user_id}\nUserId:{user_id}"
-            payload = (
-                f"user_id-{to_str(user_id)} "
-                f"message_id-{to_str(message_id)} "
-                f"stars_count-{to_str(stars_count)}"
-            ).strip()
+            payload: PaymentPayloadDict = {
+                "user_id": user_id,
+                "message_id": message_id,
+                "stars_count": stars_count,
+            }
             if target_username:
-                payload += f" target_username-{to_str(target_username)}"
+                payload["target_username"] = target_username
             payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
                 int(method),
                 float(price), "RUB",
                 description,
-                payload=payload
+                payload=json.dumps(payload, ensure_ascii=False)
             )
         else:
             raise NotImplementedError("Only Platega API is supported now")
@@ -185,26 +188,26 @@ class PaymentService:
             return transaction
 
         try:
-            response = await self._fragment_client.send_stars(
+            response: SendStarsResponse = await self._fragment_client.send_stars(
                 transaction.telegram_user.username, transaction.amount_stars
             )
 
-        except Exception as e:
-            transaction = await self._trans_repo.update_payload(
+            transaction = await self._trans_repo.update_payload(transaction, response)
+            return await self._trans_repo.update_status(
                 transaction,
-                {"error_msg": str(e)}
+                TransactionStatus.SUCCESS if response["success"] else TransactionStatus.FAILED
             )
-            _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
-            raise e
 
-        transaction = await self._trans_repo.update_payload(transaction, response)
-
-        if not response["success"]:
-            new_transaction_status = TransactionStatus.CANCELLED
-        else:
-            new_transaction_status = TransactionStatus.SUCCESS
-        return await self._trans_repo.update_status(transaction, new_transaction_status)
-
+        except Exception as err:
+            try:
+                transaction = await self._trans_repo.update_payload(
+                    transaction,
+                    {"error_msg": str(err)}
+                )
+                _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
+            except Exception as db_err:
+                raise db_err from err
+            raise err
 
     async def cancel_transaction(
             self,
@@ -227,7 +230,6 @@ class PaymentService:
             transaction = await self._trans_repo.update_payload(transaction, payload)
 
         return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
-
 
     async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """

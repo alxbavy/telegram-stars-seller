@@ -2,6 +2,9 @@ import logging
 import traceback
 import json
 import pickle
+from dataclasses import is_dataclass, asdict
+from decimal import Decimal
+from typing import override
 
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
@@ -13,13 +16,23 @@ from bot.utils.injector import inject
 
 from bot.context import get_view_context
 
-from core.integrations.fragment import FragmentAPIError
-from core.integrations.platega import PlategaAPIError
+from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITemporaryError, FragmentAPITooManyRequests
+from core.integrations.platega.schemas import PlategaAPIError
 from core.services.payment import MaintenanceModeException
 from core.services.support import SupportService
 
 
 logger = logging.getLogger(__name__)
+
+
+class DataclassEncoder(json.JSONEncoder):
+    @override
+    def default(self, o: object):
+        if is_dataclass(o) and not isinstance(o, type):
+            return asdict(o)
+        if isinstance(o, Decimal):
+            return str(o)
+        return super().default(o)
 
 
 @inject
@@ -31,7 +44,7 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
 
-    logger.debug(f"Update: {json.dumps(update_str, ensure_ascii=False, indent=2)}")
+    logger.debug(f"Update: {json.dumps(update_str, cls=DataclassEncoder, ensure_ascii=False, indent=2)}")
     logger.debug(f"Traceback: {tb_string}")
 
     if not isinstance(update, Update):
@@ -43,18 +56,35 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     if isinstance(context.error, (FragmentAPIError, PlategaAPIError)):
         text = (
-            "❌ <b>Произошла ошибка. Можешь прочитать текст ошибки, и, если уверен, попробовать снова</b>\n\n"
-            "Также, можешь начать новый заказ, или вернуться назад, если есть возможность, или "
-            "обратиться в тех. поддержку с текстом ошибки\n\n"
+            "❌ <b>Произошла ошибка!</b>\n\n"
+            "Попробуй последнее действие снова или вернись назад, если есть возможность. Либо начинай новый заказ "
+            "с помощью /start или обратись в тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
+    elif isinstance(context.error, FragmentAPITooManyRequests):
+        retry_after = str(context.error.retry_after) if context.error.retry_after else ""
+        text = (
+            f"⚠️ <b>Fragment перегружен...</b>\n\n"
+            f"{
+            'Попробуй последнее действие снова через ' + retry_after + ' секунд или обратись в тех. поддержку' if retry_after
+            else 'Обратись в тех. поддержку'
+            }"
+            f" с текстом ошибки\n\n"
+            f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
+        )
+        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
+
+    elif isinstance(context.error, FragmentAPITemporaryError):
+        text = f"⚠️ <b>Временные неполадки...</b>\n\n{context.error.bot_message}"
+        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
+
     elif isinstance(context.error, KeyboardMethodError):
         text = (
-            "❌ <b>Произошла ошибка. Метод оплаты недоступен по техническим причинам</b>\n\n"
-            "Можешь попробовать выбрать другой метод оплаты, или вернуться назад, или обратиться в тех. поддержку "
-            "с текстом ошибки\n\n"
+            "❌ <b>Произошла ошибка!</b>\n\n"
+            "Метод оплаты недоступен по техническим причинам. Попробуй другой метод оплаты или вернись назад. Либо "
+            "обратись в тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
@@ -81,7 +111,7 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     elif isinstance(context.error, (pickle.UnpicklingError, TypeError, AttributeError)):
         text = (
-            "⚠️ <b>Структура меню обновилась</b>\n\n"
+            "⚠️ <b>Структура меню обновилась...</b>\n\n"
             "Начни заказ снова с помощью /start или обратись в тех. поддержку, если ошибка останется"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
@@ -89,8 +119,8 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
     else:
         text = (
             "❌ <b>Произошла непредвиденная ошибка!</b>\n\n"
-            "Если уверен, можешь попытаться повторить последнее действие, начать новый заказ, или обратиться в тех. "
-            "поддержку с текстом ошибки\n\n"
+            "Попробуй повторить последнее действие, либо начни новый заказ с помощью /start, либо обратись в "
+            "тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)

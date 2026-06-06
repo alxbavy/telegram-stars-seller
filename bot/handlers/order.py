@@ -29,7 +29,7 @@ from bot.cleanup import clear_specific_transaction
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
-from core.integrations.fragment import FragmentClient
+from core.integrations.fragment.client import FragmentClient
 
 from core.services.payment import PaymentService
 from core.services.support import SupportService
@@ -90,8 +90,8 @@ async def _handle_custom_quantity_input_helper(
         running_users.discard(user_id)
 
 
+# Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
 async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
     return await _handle_custom_quantity_input_helper(update, context)
 
 
@@ -167,17 +167,17 @@ async def _handle_gift_username_helper(
         running_users.discard(user_id)
 
 
+# Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
 async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен."""
     return await _handle_gift_username_helper(update, context)
 
 
 @inject
 async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        payment_service: PaymentService
+        fragment_client: FragmentClient, payment_service: PaymentService
 ):
-    # Если maintenance_mode, выбросится исключение, которое поймается в error_handler
+    # Если maintenance_mode, выбросится исключение для обработки в error_handler
     await payment_service.ensure_no_maintenance_mode()
 
     cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
@@ -186,7 +186,9 @@ async def _handle_payment_method_helper(
     ctx.order.payment_method = cb_data.method
 
     # noinspection PyUnnecessaryCast
-    stars_count = cast(int, ctx.order.quantity)
+    amount_stars = cast(int, ctx.order.quantity)
+    # Если не получится определить, хватает ли средств для перевода звёзд, выбросится исключение для обработки в error_handler
+    await fragment_client.check_is_enough_currency_for_stars(amount_stars)
 
     if cb_data.price is None:
         raise NotImplementedError("needs static implementation")
@@ -200,7 +202,7 @@ async def _handle_payment_method_helper(
         user_id=update.effective_user.id,
         message_id=update.effective_message.message_id,
         price=cb_data.price,
-        stars_count=stars_count,
+        stars_count=amount_stars,
         payment_api=cb_data.method_api,
         method=method_id,
         target_username=ctx.order.target_username
@@ -225,7 +227,7 @@ async def _handle_payment_method_helper(
     expires_in_minutes = str(ceil(expires_in_td.total_seconds() / 60))
     msg = await show_order_confirmation(
         update, context,
-        stars_count, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,
+        amount_stars, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,
         is_gift, ctx.order.target_username
     )
 

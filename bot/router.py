@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from bot.handlers.back import handle_back_button
+from bot.handlers.debug import balance_handler, prices_handler
 from bot.handlers.profile import handle_profile_menu, handle_history_pagination
 from bot.handlers.main import handle_main_menu
 from bot.handlers.order import (
@@ -85,4 +86,10 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
         name="main_conversation",
         block=False,
         # persistent=True TODO: Uncomment with persistent realisation
+    )
+
+def get_debug_handlers() -> tuple[CommandHandler[ContextTypes.DEFAULT_TYPE, None], ...]:
+    return (
+        CommandHandler("balance", balance_handler),
+        CommandHandler("prices", prices_handler),
     )

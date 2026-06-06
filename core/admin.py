@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import final, override
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest
 from django.utils import timezone
@@ -34,7 +35,7 @@ class TransactionTypeMixin:
 class TransactionInline(admin.TabularInline, TransactionTypeMixin):
     """Инлайн для отображения транзакций в карточке пользователя"""
     model: type[Transaction] = Transaction
-    readonly_fields = ("target_username", "amount_stars", "amount_fiat",
+    readonly_fields = ("id", "target_username", "amount_stars", "amount_fiat",
                        "status", "transaction_type", "created_at", "expires_at", "updated_at")
     show_change_link = True
     can_delete = False
@@ -54,7 +55,10 @@ class TelegramUserAdmin(admin.ModelAdmin):
     search_fields = ("username", "telegram_id")
     list_filter = (("created_at", admin.DateFieldListFilter),)
     search_help_text = "Поиск по имени пользователя или ID"
-    readonly_fields = ("created_at",)
+    if settings.DEBUG:
+        readonly_fields = ("created_at",)
+    else:
+        readonly_fields = ("username", "telegram_id", "created_at")
     inlines = [TransactionInline]
 
 
@@ -93,7 +97,15 @@ class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
     search_fields = ("telegram_user__username", "telegram_user__telegram_id")
     search_help_text = "Поиск по имени пользователя или ID"
     readonly_fields = ("created_at", "expires_at", "updated_at")
+    readonly_fields_when_created = ("id",)
     inlines = [TransactionMetadataInline]
+
+    @override
+    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
+        if obj:
+            return tuple(list(self.readonly_fields) + list(self.readonly_fields_when_created))
+
+        return tuple(self.readonly_fields)
 
 
 @final

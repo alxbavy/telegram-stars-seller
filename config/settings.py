@@ -18,8 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 env = environ.Env(
-    IS_PRODUCTION=(bool, True),
     DEBUG=(bool, False),
+    USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
 )
 
@@ -42,9 +42,9 @@ PLATEGA_API_URL = env('PLATEGA_API_URL')
 PLATEGA_MERCHANT_ID = env('PLATEGA_MERCHANT_ID')
 PLATEGA_SECRET = env('PLATEGA_SECRET')
 
-IS_PRODUCTION = env('IS_PRODUCTION')
+USE_SSL = env('USE_SSL')
 
-if IS_PRODUCTION:
+if USE_SSL:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
 

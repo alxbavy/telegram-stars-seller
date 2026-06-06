@@ -18,6 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 env = environ.Env(
+    IS_PRODUCTION=(bool, True),
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
@@ -40,6 +41,12 @@ FRAGMENT_CURRENCY = env('FRAGMENT_CURRENCY')
 PLATEGA_API_URL = env('PLATEGA_API_URL')
 PLATEGA_MERCHANT_ID = env('PLATEGA_MERCHANT_ID')
 PLATEGA_SECRET = env('PLATEGA_SECRET')
+
+IS_PRODUCTION = env('IS_PRODUCTION')
+
+if IS_PRODUCTION:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
 
 
 import django_stubs_ext

@@ -59,15 +59,22 @@ django_stubs_ext.monkeypatch()
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'skip_not_found': {
+            '()': 'django.utils.log.CallbackFilter',
+            'callback': lambda record, d=DEBUG: d or ('Not Found:' not in record.getMessage()),
+        },
+    },
     'formatters': {
         'verbose': {'format': '{levelname} {asctime} {module} {message}', 'style': '{'},
     },
     'handlers': {
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
+        'django_console': {'class': 'logging.StreamHandler', 'formatter': 'verbose', 'filters': ['skip_not_found']},
     },
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {
-        'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'django': {'handlers': ['django_console'], 'level': 'INFO', 'propagate': False},
         'httpx': {'handlers': ['console'], 'level': 'WARNING'},
     },
 }

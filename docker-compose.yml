@@ -21,6 +21,25 @@ services:
     stop_grace_period: 25s
     restart: always
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build: .
+    command: celery -A config worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - sqlite_data:/app/data
+    restart: always
+    depends_on:
+      - redis
+      - web
+
 volumes:
   sqlite_data:
   persistence_pickle:
+  redis_data:

@@ -21,6 +21,7 @@ env = environ.Env(
     DEBUG=(bool, False),
     USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
+    CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
 )
 
 
@@ -32,6 +33,10 @@ environ.Env.read_env(BASE_DIR / '.env')
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+
+CELERY_BROKER_URL = env('CELERY_BROKER_URL')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
 
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
 

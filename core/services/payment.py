@@ -235,7 +235,14 @@ class PaymentService:
             else transaction
         )
 
-    async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
+    async def delete_expired_transactions(self) -> None:
+        """Удаляет все транзакции со статусом PENDING, у которых истекло время ожидания."""
+        await self._trans_repo.delete_expired_transactions(None)
+
+    # Deprecated:
+    # Удаление отдельных транзакций по таймеру небезопасно и неэффективно,
+    # лучше использовать self.delete_expired_transactions
+    async def delete_transactions_expires_in(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """
         Удаляет транзакции (или одну) со статусом PENDING, у которых истекло время ожидания.
 

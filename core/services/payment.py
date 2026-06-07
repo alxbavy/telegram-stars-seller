@@ -215,7 +215,7 @@ class PaymentService:
             payload: Mapping[str, object] | None = None
     ) -> Transaction | None:
         """
-        Выставляет транзакции статус `"CANCELLED"`.
+        Выставляет транзакции статус `"CANCELLED"`, если её статус не был `"SUCCESS"`.
 
         - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
         """
@@ -229,7 +229,11 @@ class PaymentService:
         if payload is not None:
             transaction = await self._trans_repo.update_payload(transaction, payload)
 
-        return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+        return (
+            await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+            if transaction.status != TransactionStatus.SUCCESS
+            else transaction
+        )
 
     async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """

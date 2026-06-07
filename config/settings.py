@@ -67,15 +67,18 @@ LOGGING = {
     },
     'formatters': {
         'verbose': {'format': '{levelname} {asctime} {module} {message}', 'style': '{'},
+        'audit_format': {'format': '{levelname} - {asctime} - {message}', 'style': '{'},
     },
     'handlers': {
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
         'django_console': {'class': 'logging.StreamHandler', 'formatter': 'verbose', 'filters': ['skip_not_found']},
+        'audit_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': '/app/data/payments_audit.log', 'formatter': 'audit_format'},
     },
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {
         'django': {'handlers': ['django_console'], 'level': 'INFO', 'propagate': False},
         'httpx': {'handlers': ['console'], 'level': 'WARNING'},
+        'payment_audit': {'handlers': ['audit_file', 'console'], 'level': 'INFO', 'propagate': False},
     },
 }
 

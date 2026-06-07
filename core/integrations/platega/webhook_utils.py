@@ -37,7 +37,7 @@ def is_authenticated(headers: PlategaHeaders) -> bool:
 
 
 def status_code_or_access_granted(request: HttpRequest) -> int | bool:
-    if request.method == "POST":
+    if request.method != "POST":
         return 405
     if not is_authenticated(request.headers):
         return 403

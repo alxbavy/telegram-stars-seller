@@ -18,7 +18,7 @@ from bot.context import get_view_context
 
 from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITemporaryError, FragmentAPITooManyRequests
 from core.integrations.platega.schemas import PlategaAPIError
-from core.services.payment import MaintenanceModeException
+from core.services.payment import MaintenanceModeException, NoUsernameError
 from core.services.support import SupportService
 
 
@@ -78,6 +78,13 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
 
     elif isinstance(context.error, FragmentAPITemporaryError):
         text = f"⚠️ <b>Временные неполадки...</b>\n\n{context.error.bot_message}"
+        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
+
+    elif isinstance(context.error, NoUsernameError):
+        text = (
+            f"⚠️ <b>Не получилось определить username...</b>\n\n"
+            f"Для перевода звёзд он обязателен, поэтому попробуй сделать заказ заново"
+        )
         _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, KeyboardMethodError):

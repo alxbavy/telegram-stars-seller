@@ -105,7 +105,7 @@ async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DE
             _ = await send_empty_username_alert(update)
             return BotConversationState.CHOOSE_RECIPIENT
 
-        ctx.order.target_username = ""
+        ctx.order.target_username = update.effective_user.username
 
         # noinspection PyUnnecessaryCast
         stars_count = cast(int, ctx.order.quantity)

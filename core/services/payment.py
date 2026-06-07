@@ -21,6 +21,10 @@ from core.integrations.fragment.client import FragmentClient
 from core.services.user import UnregisteredUser
 
 
+class NoUsernameError(Exception):
+    """Исключение для случая, когда username отсутствует."""
+
+
 class MaintenanceModeException(Exception):
     """Исключение для технического перерыва."""
 
@@ -102,18 +106,21 @@ class PaymentService:
         if user_buyer is None:
             raise UnregisteredUser(user_id)
 
-        def to_str(obj: object) -> str:
-            return str(obj).strip()
+        if not target_username:
+            if not user_buyer.username:
+                raise NoUsernameError()
+
+            target_username = user_buyer.username
 
         if "platega" in payment_api.lower():
             description = f"TgId:{user_id}\nUserId:{user_id}"
             payload: PaymentPayloadDict = {
                 "user_id": user_id,
                 "message_id": message_id,
+                "price": float(price),
                 "stars_count": stars_count,
+                "target_username": target_username
             }
-            if target_username:
-                payload["target_username"] = target_username
             payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
                 int(method),
                 float(price), "RUB",

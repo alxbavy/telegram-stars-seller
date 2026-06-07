@@ -1,6 +1,7 @@
 services:
   web:
     build: .
+    image: telegram-stars-seller:latest
     command: gunicorn config.asgi:application --bind 0.0.0.0:8000 -k uvicorn.workers.UvicornWorker --workers 4
     ports:
       - "127.0.0.1:8000:8000"
@@ -11,7 +12,7 @@ services:
     restart: always
 
   bot:
-    build: .
+    image: telegram-stars-seller:latest
     command: python manage.py runbot
     env_file:
       - .env
@@ -20,6 +21,8 @@ services:
       - persistence_pickle:/app/bot/data
     stop_grace_period: 25s
     restart: always
+    depends_on:
+      - web
 
   redis:
     image: redis:7-alpine
@@ -28,7 +31,7 @@ services:
       - redis_data:/data
 
   celery_worker:
-    build: .
+    image: telegram-stars-seller:latest
     command: celery -A config worker --loglevel=info
     env_file:
       - .env

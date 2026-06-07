@@ -54,7 +54,9 @@ def parse_payload(data: PlategaRequestJson) -> PaymentPayloadDict | None:
     if (
             parsed_payload.get("user_id") is None or
             parsed_payload.get("message_id") is None or
-            parsed_payload.get("stars_count") is None
+            parsed_payload.get("price") is None or
+            parsed_payload.get("stars_count") is None or
+            parsed_payload.get("target_username") is None
     ):
         logger.exception("Payload from Platega is invalid")
         return None

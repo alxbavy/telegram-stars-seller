@@ -68,18 +68,20 @@ async def run_async_payment_workflow(data: PlategaWebhookRequestJson, parsed_pay
     bot = ExtBot(token=settings.TELEGRAM_BOT_TOKEN)
     parse_mode = ParseMode.HTML
 
+    if parsed_payload:
+        async with bot:
+            await safe_remove_reply_markup_for_order_message(
+                bot,
+                parsed_payload["user_id"],
+                parsed_payload["message_id"]
+            )
+
     result: str | Transaction | TransactionStatus | None = await safe_process_transaction(data, parsed_payload)
 
+    if not parsed_payload:
+        return
+
     async with bot:
-        if not parsed_payload:
-            return
-
-        await safe_remove_reply_markup_for_order_message(
-            bot,
-            parsed_payload["user_id"],
-            parsed_payload["message_id"]
-        )
-
         support_url = await get_support_url()
 
         if result is None:

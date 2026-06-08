@@ -44,13 +44,14 @@ class PlategaClient:
             description: str,
             payload: str = ""
     ) -> PaymentDTO:
-        import uuid
-        return PaymentDTO(  # TODO: заглушка Platega
-            transaction_id=uuid.uuid4(),
-            pay_url="https://test.link",
-            price=Decimal(amount),
-            expires_in="00:30:00"
-        )
+        # Заглушка для тестов
+        # import uuid
+        # return PaymentDTO(
+        #     transaction_id=uuid.uuid4(),
+        #     pay_url="https://test.link",
+        #     price=Decimal(amount),
+        #     expires_in="00:30:00"
+        # )
 
         description_pattern = re.compile(r"^TgId:\d+\nUserId:\d+$")
         if not description_pattern.search(description):

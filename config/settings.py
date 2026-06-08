@@ -16,6 +16,11 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DATA_DIR = BASE_DIR / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+AUDIT_LOG_FILE = DATA_DIR / 'payments_audit.log'
+
 
 env = environ.Env(
     DEBUG=(bool, False),
@@ -77,7 +82,7 @@ LOGGING = {
     'handlers': {
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
         'django_console': {'class': 'logging.StreamHandler', 'formatter': 'verbose', 'filters': ['skip_not_found']},
-        'audit_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': '/app/data/payments_audit.log', 'formatter': 'audit_format'},
+        'audit_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': str(AUDIT_LOG_FILE), 'formatter': 'audit_format'},
     },
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {

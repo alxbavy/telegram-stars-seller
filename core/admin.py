@@ -173,17 +173,18 @@ class MonthlyProfitAdmin(admin.ModelAdmin):
         # 2. Группируем (TruncMonth) по месяцу создания
         # 3. Суммируем поле amount_fiat
         monthly_stats = (
-            Transaction.objects.filter(status="SUCCESS")
+            Transaction.objects
+            .filter(status="SUCCESS")
             .annotate(month=TruncMonth("created_at"))
             .values("month")
-            .annotate(total_profit=Sum("amount_fiat"))
+            .annotate(monthly_profit=Sum("amount_fiat"))
             .order_by("-month")
         )
 
         total_all_time = (
             Transaction.objects
             .filter(status="SUCCESS")
-            .aggregate(Sum("amount_fiat"))["amount_fiat__sum"] or 0
+            .aggregate(total_profit=Sum("amount_fiat"))["total_profit"] or 0
         )
 
         extra_context = extra_context or {}

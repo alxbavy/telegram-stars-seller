@@ -16,6 +16,7 @@ from core.domain.enums import TransactionStatus
 from core.integrations.platega.schemas import PlategaWebhookRequestJson, PaymentPayloadDict
 from core.integrations.platega.webhook_utils import (
     get_support_url,
+    safe_delete_order_message,
     safe_remove_reply_markup_for_order_message,
     safe_process_transaction,
     safe_notify_user,
@@ -70,39 +71,45 @@ async def run_async_payment_workflow(data: PlategaWebhookRequestJson, parsed_pay
     result: str | Transaction | TransactionStatus | None = await safe_process_transaction(data, parsed_payload)
 
     async with bot:
-        if parsed_payload:
-            await safe_remove_reply_markup_for_order_message(
-                bot,
-                parsed_payload["user_id"],
-                parsed_payload["message_id"]
-            )
-
-        if result is None:
+        if not parsed_payload:
             return
+
+        await safe_remove_reply_markup_for_order_message(
+            bot,
+            parsed_payload["user_id"],
+            parsed_payload["message_id"]
+        )
 
         support_url = await get_support_url()
 
-        if isinstance(result, (Transaction, TransactionStatus)) and parsed_payload:
+        if result is None:
+            pass
+
+        elif isinstance(result, (Transaction, TransactionStatus)):
             await safe_notify_user(
                 bot, parse_mode,
                 result, data.get("id"),
                 parsed_payload["user_id"], support_url
             )
-            return
 
-        if not parsed_payload:
-            return
-
-        text = (
-            f"❌ <b>Произошла ошибка!</b>\n\n"
-            f"Обратись в тех. поддержку с ID заказа и текстом ошибки или сделай новый заказ — /start\n"
-            f"🆔 ID заказа: <code>{data.get('id')}</code>\n\n"
-            f"Текст ошибки:\n<pre>{result}</pre>"
-        )
-        try:
-            _ = await bot.send_message(
-                chat_id=parsed_payload["user_id"], text=text,
-                reply_markup=build_error_kb(support_url), parse_mode=parse_mode
+        else:
+            text = (
+                f"❌ <b>Произошла ошибка!</b>\n\n"
+                f"Обратись в тех. поддержку с ID заказа и текстом ошибки или сделай новый заказ — /start\n"
+                f"🆔 ID заказа: <code>{data.get('id')}</code>\n\n"
+                f"Текст ошибки:\n<pre>{result}</pre>"
             )
-        except Exception as err:
-            logger.exception(f"Failed to send error msg: {err}")
+            try:
+                _ = await bot.send_message(
+                    chat_id=parsed_payload["user_id"], text=text,
+                    reply_markup=build_error_kb(support_url), parse_mode=parse_mode
+                )
+            except Exception as err:
+                logger.exception(f"Failed to send error msg: {err}")
+                return
+
+        await safe_delete_order_message(
+            bot,
+            parsed_payload["user_id"],
+            parsed_payload["message_id"]
+        )

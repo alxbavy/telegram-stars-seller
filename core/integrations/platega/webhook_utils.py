@@ -87,6 +87,16 @@ async def safe_remove_reply_markup_for_order_message(bot: ExtBot[None], user_id:
         logger.exception(log_msg)
 
 
+async def safe_delete_order_message(bot: ExtBot[None], user_id: int, message_id: int) -> None:
+    try:
+        _ = await bot.delete_message(chat_id=user_id, message_id=message_id)
+    except Exception as err:
+        log_msg = (
+            f"Error while trying to delete order message: {user_id = }, {message_id = }\n{err = }"
+        )
+        logger.exception(log_msg)
+
+
 async def safe_process_transaction(
         data: PlategaWebhookRequestJson, parsed_payload: PaymentPayloadDict | None
 ) -> str | Transaction | TransactionStatus | None:

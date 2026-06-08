@@ -14,12 +14,12 @@ class PaymentMethodDTO:
     commission_percent: Decimal
 
 
-@dataclass(frozen=True)
+@dataclass
 class PaymentDTO:
     transaction_id: UUID
     pay_url: str
     price: Decimal
-    expires_in: str
+    expires_in: str | None
 
 
 class PricingDTO(NamedTuple):

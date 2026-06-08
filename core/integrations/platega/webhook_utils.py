@@ -186,7 +186,7 @@ async def safe_notify_user(
             f"🆔 ID заказа: <code>{transaction_id}</code>\n"
         )
         if isinstance(transaction, Transaction):
-            text += f"Текст ошибки:\n<pre>{json.dumps(transaction.metadata_info.payload, indent=2)}</pre>"
+            text += f"Текст ошибки:\n<pre>{json.dumps(transaction.metadata_info.payload, indent=2, ensure_ascii=False)}</pre>"
         else:
             text += "Текст ошибки:\n<pre>Произошла ошибка БД, поэтому полный текст ошибки доступен в логах</pre>"
         reply_markup = build_error_kb(support_url)

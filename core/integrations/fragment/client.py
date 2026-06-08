@@ -156,7 +156,7 @@ class FragmentClient:
         #     "created_at": "dummy_created_at",
         # }
 
-        username = username.strip()
+        username = username.lstrip("@").strip()
 
         if not username:
             error_msg = "username нельзя быть пустым при переводе звёзд"

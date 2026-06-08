@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Mapping
 from decimal import Decimal
 from uuid import UUID
@@ -83,11 +82,12 @@ class PlategaClient:
                 price_pattern = re.compile(r"^(\S+)")
                 price = price_pattern.match(response_data["paymentDetails"]).group()
 
+            # TODO: ещё надо вернуть response.json и сохранить в транзакции для дебага
             return PaymentDTO(
                 transaction_id=UUID(response_data["transactionId"]),
                 pay_url=response_data["redirect"],
                 price=Decimal(price),
-                expires_in=response_data["expiresIn"]
+                expires_in=response_data.get("expiresIn")
             )
 
         if response.status_code == 400:

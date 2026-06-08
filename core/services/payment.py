@@ -138,6 +138,10 @@ class PaymentService:
         else:
             raise NotImplementedError("Only Platega API is supported now")
 
+        # TODO: продумать поведение
+        if payment_dto.expires_in is None:
+            payment_dto.expires_in = "00:30:00"
+
         _ = await self._trans_repo.create_transaction(
             transaction_id=payment_dto.transaction_id,
             user=user_buyer,

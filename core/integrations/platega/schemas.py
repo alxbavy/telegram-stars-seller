@@ -30,7 +30,7 @@ class TransactionCreationResponse(TypedDict):
     transactionId: str
     redirect: str
     paymentDetails: str | dict[str, int | str]
-    expiresIn: str
+    expiresIn: str | None
 
 
 type PlategaHeaders = Mapping[str, object]

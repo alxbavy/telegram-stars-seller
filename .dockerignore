@@ -3,3 +3,10 @@ __pycache__
 .git
 .idea
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+**/tests/
+temp/
+pyproject.toml
+data/

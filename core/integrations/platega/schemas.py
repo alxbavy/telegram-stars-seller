@@ -1,4 +1,4 @@
-from typing import TypedDict, NotRequired
+from typing import TypedDict
 from collections.abc import Mapping
 
 
@@ -9,8 +9,9 @@ class PlategaAPIError(Exception):
 class PaymentPayloadDict(TypedDict):
     user_id: int
     message_id: int
+    price: float
     stars_count: int
-    target_username: NotRequired[str]
+    target_username: str
 
 
 class TransactionCreationResponse(TypedDict):

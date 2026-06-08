@@ -66,7 +66,7 @@ class FragmentClient:
             await asyncio.sleep(delay)
 
         username = username.lstrip("@")
-        # На случай, если понадобится заглушка
+        # Заглушка для тестов
         # if username == "True":
         #     return True
         # else:
@@ -142,19 +142,19 @@ class FragmentClient:
         Для отображения информации об ошибках пользователю их следует отлавливать либо в `error_handler`, либо,
         если такой возможности нет, с помощью `try except`.
         """
-        # На случай, если понадобится заглушка
-        return {
-            "success": True,
-            "receiver": "dummy_receiver",
-            "sender": {"phone_number": "dummy_phone_number"},
-            "price": {"currency": self.currency, "amount": "1337.0"},
-            "fee": {"currency": self.currency, "amount": "1337.0"},
-            "ref_id": "dummy_ref_id",
-            "status": "dummy_status",
-            "type": "dummy_type",
-            "error": "dummy_error",
-            "created_at": "dummy_created_at",
-        }
+        # Заглушка для тестов
+        # return {
+        #     "success": True,
+        #     "receiver": "dummy_receiver",
+        #     "sender": {"phone_number": "dummy_phone_number"},
+        #     "price": {"currency": self.currency, "amount": "1337.0"},
+        #     "fee": {"currency": self.currency, "amount": "1337.0"},
+        #     "ref_id": "dummy_ref_id",
+        #     "status": "dummy_status",
+        #     "type": "dummy_type",
+        #     "error": "dummy_error",
+        #     "created_at": "dummy_created_at",
+        # }
 
         username = username.strip()
 

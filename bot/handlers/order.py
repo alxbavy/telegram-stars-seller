@@ -25,7 +25,6 @@ from bot.renderers.order import (
 )
 
 from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_callback, FixedQuantityCallback
-from bot.cleanup import clear_specific_transaction
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
@@ -106,6 +105,7 @@ async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DE
             _ = await send_empty_username_alert(update)
             return BotConversationState.CHOOSE_RECIPIENT
 
+        # Нужно указывать пустым, так как сюда можно вернуться с предыдущих шагов, где он мог быть заполнен
         ctx.order.target_username = ""
 
         # noinspection PyUnnecessaryCast
@@ -214,17 +214,9 @@ async def _handle_payment_method_helper(
     is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
 
     actual_expires_in = datetime.strptime(payment_dto.expires_in, "%H:%M:%S")
-    expires_in_for_job = actual_expires_in + timedelta(minutes=1)
-    delay = timedelta(hours=expires_in_for_job.hour, minutes=expires_in_for_job.minute, seconds=expires_in_for_job.second)
-    expires_in_str_for_job = f"{expires_in_for_job.hour:02}:{expires_in_for_job.minute:02}:{expires_in_for_job.second:02}"
-    _ = context.job_queue.run_once(
-        clear_specific_transaction,
-        when = delay,
-        data = (payment_dto.transaction_id, expires_in_str_for_job)
-    )
-
     expires_in_td = timedelta(hours=actual_expires_in.hour, minutes=actual_expires_in.minute, seconds=actual_expires_in.second)
     expires_in_minutes = str(ceil(expires_in_td.total_seconds() / 60))
+
     msg = await show_order_confirmation(
         update, context,
         amount_stars, payment_dto.price, payment_dto.pay_url, payment_dto.transaction_id, expires_in_minutes,

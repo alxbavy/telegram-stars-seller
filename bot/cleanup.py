@@ -8,6 +8,15 @@ from core.services.payment import PaymentService
 
 
 @inject_without_update
+async def _clear_expired_transactions_helper(context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService) -> None:
+    await payment_service.delete_expired_transactions()
+
+
+async def clear_expired_transactions(context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _clear_expired_transactions_helper(context)
+
+
+@inject_without_update
 async def _clear_specific_transaction_helper(context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService) -> None:
     """Смотрите документацию для `clear_specific_transaction` для подробностей."""
     transaction_id, expires_in = cast(tuple[UUID, str], context.job.data)
@@ -15,9 +24,11 @@ async def _clear_specific_transaction_helper(context: ContextTypes.DEFAULT_TYPE,
         raise ValueError("transaction_id must be UUID")
     if not isinstance(expires_in, str):
         raise ValueError("expires_in must be str with format HH:MM:SS")
-    await payment_service.delete_transactions(expires_in, transaction_id)
+    await payment_service.delete_transactions_expires_in(expires_in, transaction_id)
 
 
+# Deprecated:
+# Подробности в PaymentService.delete_transactions_expires_in
 async def clear_specific_transaction(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Это `callback`, который должен передаваться в `Job` при создании его с помощью `job_queue`.

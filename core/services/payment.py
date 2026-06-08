@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import final
@@ -9,8 +10,8 @@ from django.utils.timezone import datetime, timedelta
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.client import PlategaClient
-from core.integrations.platega.schemas import PaymentPayloadDict
-from core.models import Transaction
+from core.integrations.platega.schemas import PaymentPayloadDict, PlategaRequestJson
+from core.models import Transaction, TARGET_SELF
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 from core.repositories.payment import PaymentRepository
@@ -19,6 +20,14 @@ from core.domain.enums import TransactionStatus
 from core.services.star_price import StarService
 from core.integrations.fragment.client import FragmentClient
 from core.services.user import UnregisteredUser
+
+
+logger = logging.getLogger(__name__)
+audit_logger = logging.getLogger("payment_audit")
+
+
+class NoUsernameError(Exception):
+    """Исключение для случая, когда username отсутствует."""
 
 
 class MaintenanceModeException(Exception):
@@ -102,18 +111,24 @@ class PaymentService:
         if user_buyer is None:
             raise UnregisteredUser(user_id)
 
-        def to_str(obj: object) -> str:
-            return str(obj).strip()
+        payload_target_username = None
+        if not target_username:
+            if not user_buyer.username:
+                raise NoUsernameError()
+
+            payload_target_username = user_buyer.username
 
         if "platega" in payment_api.lower():
             description = f"TgId:{user_id}\nUserId:{user_id}"
+            if payload_target_username is None:
+                payload_target_username = target_username
             payload: PaymentPayloadDict = {
                 "user_id": user_id,
                 "message_id": message_id,
+                "price": float(price),
                 "stars_count": stars_count,
+                "target_username": payload_target_username,
             }
-            if target_username:
-                payload["target_username"] = target_username
             payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
                 int(method),
                 float(price), "RUB",
@@ -146,12 +161,18 @@ class PaymentService:
         """
         Создаёт транзакцию с нуля. Должно вызываться в вебхуке, если по какой-то причине транзакция отсутствует в БД.
         """
+        transaction_uuid = UUID(transaction_id)
+
+        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        if transaction:
+            return transaction
+
         telegram_user = await self._user_repo.get_by_telegram_id(user_id)
         if telegram_user is None:
             raise UnregisteredUser(user_id)
 
         return await self._trans_repo.create_transaction(
-            transaction_id=UUID(transaction_id),
+            transaction_id=transaction_uuid,
             user=telegram_user,
             amount_fiat=price,
             amount_stars=stars_count,
@@ -161,77 +182,136 @@ class PaymentService:
             json_payload=payload
         )
 
-    async def confirm_payment(self, transaction_id: str) -> Transaction | None:
+    async def get_transaction_by_uuid(
+            self,
+            transaction_uuid: UUID,
+            data: PlategaRequestJson, payload: PaymentPayloadDict | None
+    ) -> Transaction | None:
+        transaction = None
+        try:
+            transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
+        except Exception as db_err:
+            logger.exception(f"DB error when trying to get transaction {transaction_uuid}\n{db_err =}")
+
+        if transaction is None:
+            if payload is None:
+                return None
+
+            target_username = payload["target_username"]
+            try:
+                telegram_user = await self._user_repo.get_by_telegram_id(payload["user_id"])
+                if telegram_user and telegram_user.username == payload["target_username"]:
+                    target_username = ""  # Пустое значение, чтобы использовалось TARGET_SELF
+            except Exception as db_err:
+                logger.exception(f"DB error when trying to get user for creating transaction {transaction_uuid}\n{db_err =}")
+
+            try:
+                transaction = await self.create_transaction(
+                    transaction_id=str(transaction_uuid),
+                    user_id=payload["user_id"],
+                    price=data["amount"],
+                    stars_count=payload["stars_count"],
+                    payment_api="Platega (Generated)",
+                    method=str(data["paymentMethod"]),
+                    target_username=target_username,
+                    payload=data
+                )
+            except Exception as transaction_err:
+                logger.exception(f"DB error when trying to create transaction in webhook\n{transaction_err = }")
+                return None
+
+        return transaction
+
+    async def confirm_payment(self, transaction: Transaction) -> Transaction | TransactionStatus:
         """
         Вызывается при получении Вебхука от платежки.
-
-        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
 
         - Если `transaction.status == "SUCCESS"`, то сразу вернётся соответствующая транзакция.
 
         - Если перевод звёзд пройдёт успешно, то `transaction.status` станет `"SUCCESS"`, при неудачном переводе -
-        `"CANCELLED"`.
+        `"FAILED"`.
 
-        - Если при переводе звёзд возникнет ошибка, то `transaction.status` сам станет `"FAILED"`, и ошибка пробросится
-        дальше.
+        - Если при переводе звёзд возникнет ошибка, то `transaction.status` сам станет `"FAILED"`, и вернётся транзакция.
+
+        - Если по какой-то причине БД будет недоступна, вернётся статус транзакции - SUCCESS при успехе,
+        FAILED в любом другом случае.
         """
-        # TODO: Должно вызываться не только при получении Вебхука от платежки,
-        #       но и из списка транзакции, когда перевод не прошёл по вине FragmentAPI
-        #       (либо пользователь должен связаться с поддержкой, чтобы перевод был совершён вручную)
-        transaction_uuid = UUID(transaction_id)
-
-        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
-        if transaction is None:
-            return None
 
         if transaction.status == TransactionStatus.SUCCESS:
             return transaction
 
         try:
+            target_username = transaction.target_username
+            if transaction.target_username == TARGET_SELF:
+                target_username = transaction.telegram_user.username
             response: SendStarsResponse = await self._fragment_client.send_stars(
-                transaction.telegram_user.username, transaction.amount_stars
+                target_username, transaction.amount_stars
             )
-
-            transaction = await self._trans_repo.update_payload(transaction, response)
-            return await self._trans_repo.update_status(
-                transaction,
-                TransactionStatus.SUCCESS if response["success"] else TransactionStatus.FAILED
-            )
-
-        except Exception as err:
+        except Exception as request_err:
+            logger.exception(f"Error when sending stars for transaction {transaction.id}\n{request_err = }")
             try:
                 transaction = await self._trans_repo.update_payload(
                     transaction,
-                    {"error_msg": str(err)}
+                    {"error_msg": str(request_err)}
                 )
-                _ = await self._trans_repo.update_status(transaction, TransactionStatus.FAILED)
+                transaction = await self._trans_repo.update_status(
+                    transaction,
+                    TransactionStatus.FAILED
+                )
+                return transaction
             except Exception as db_err:
-                raise db_err from err
-            raise err
+                logger.exception(f"DB error with transaction {transaction.id} when trying to log error\n{db_err = }")
+                return TransactionStatus.FAILED
+
+        is_success = response["success"]
+        if is_success:
+            audit_logger.info(f"Transaction {transaction.id} is succeeded")
+
+        new_status = TransactionStatus.SUCCESS if is_success else TransactionStatus.FAILED
+        try:
+            transaction = await self._trans_repo.update_payload(transaction, response)
+            return await self._trans_repo.update_status(transaction, new_status)
+
+        except Exception as db_err:
+            logger.exception(f"DB error with transaction {transaction.id} when trying to set {new_status}\n{db_err = }")
+            return new_status
 
     async def cancel_transaction(
             self,
-            transaction_id: str,
+            transaction: Transaction,
             payload: Mapping[str, object] | None = None
-    ) -> Transaction | None:
+    ) -> Transaction | TransactionStatus:
         """
-        Выставляет транзакции статус `"CANCELLED"`.
+        Выставляет транзакции статус `"CANCELLED"`, если её статус не был `"SUCCESS"`.
 
-        - Если транзакция с `transaction_id` не будет найдена, вернётся `None`.
+        - Если БД по какой-то причине недоступно, вернётся статус транзакции.
         """
 
-        transaction_uuid = UUID(transaction_id)
+        try:
+            if payload is not None:
+                transaction = await self._trans_repo.update_payload(transaction, payload)
+        except Exception as db_err:
+            logger.exception(f"DB error with transaction {transaction.id} when trying to log cancelling payment\n{db_err = }")
 
-        transaction = await self._trans_repo.get_by_transaction_id(transaction_uuid)
-        if transaction is None:
-            return None
+        try:
+            return (
+                await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+                if transaction.status != TransactionStatus.SUCCESS
+                else transaction
+            )
 
-        if payload is not None:
-            transaction = await self._trans_repo.update_payload(transaction, payload)
+        except Exception as db_err:
+            logger.exception(f"DB error with transaction {transaction.id} when trying to cancel payment\n{db_err = }")
+            return TransactionStatus.CANCELLED
 
-        return await self._trans_repo.update_status(transaction, TransactionStatus.CANCELLED)
+    async def delete_expired_transactions(self) -> None:
+        """Удаляет все транзакции со статусом PENDING, у которых истекло время ожидания."""
+        await self._trans_repo.delete_expired_transactions(None)
 
-    async def delete_transactions(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
+    # Deprecated:
+    # Удаление отдельных транзакций по таймеру небезопасно и неэффективно,
+    # лучше использовать self.delete_expired_transactions
+    async def delete_transactions_expires_in(self, expires_in: str, transaction_ids: list[UUID] | UUID | None = None) -> None:
         """
         Удаляет транзакции (или одну) со статусом PENDING, у которых истекло время ожидания.
 

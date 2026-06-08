@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import final, override
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest
 from django.utils import timezone
@@ -34,7 +35,7 @@ class TransactionTypeMixin:
 class TransactionInline(admin.TabularInline, TransactionTypeMixin):
     """Инлайн для отображения транзакций в карточке пользователя"""
     model: type[Transaction] = Transaction
-    readonly_fields = ("target_username", "amount_stars", "amount_fiat",
+    readonly_fields = ("id", "target_username", "amount_stars", "amount_fiat",
                        "status", "transaction_type", "created_at", "expires_at", "updated_at")
     show_change_link = True
     can_delete = False
@@ -50,11 +51,16 @@ class TransactionInline(admin.TabularInline, TransactionTypeMixin):
 @final
 @admin.register(TelegramUser)
 class TelegramUserAdmin(admin.ModelAdmin):
-    list_display = ("username", "telegram_id", "created_at")
+    list_display = ("username", "telegram_id", "created_at", "updated_at")
     search_fields = ("username", "telegram_id")
-    list_filter = (("created_at", admin.DateFieldListFilter),)
+    list_filter = (
+        ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter)
+    )
     search_help_text = "Поиск по имени пользователя или ID"
-    readonly_fields = ("created_at",)
+    if settings.DEBUG:
+        readonly_fields = ("created_at", "updated_at")
+    else:
+        readonly_fields = ("username", "telegram_id", "created_at", "updated_at")
     inlines = [TransactionInline]
 
 
@@ -93,7 +99,15 @@ class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
     search_fields = ("telegram_user__username", "telegram_user__telegram_id")
     search_help_text = "Поиск по имени пользователя или ID"
     readonly_fields = ("created_at", "expires_at", "updated_at")
+    readonly_fields_when_created = ("id",)
     inlines = [TransactionMetadataInline]
+
+    @override
+    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
+        if obj:
+            return tuple(list(self.readonly_fields) + list(self.readonly_fields_when_created))
+
+        return tuple(self.readonly_fields)
 
 
 @final
@@ -114,30 +128,37 @@ class PaymentAPIAdmin(admin.ModelAdmin):
 @admin.register(GlobalSettings)
 class GlobalSettingsAdmin(SingletonModelAdmin):
     # Добавляем отображение полей из ExchangeRate прямо сюда с помощью "виртуальных" полей
-    readonly_fields = ("usd_current_rate_display", "last_usd_rate_update_display")
+    # readonly_fields = ("usd_current_rate_display", "last_usd_rate_update_display")
+    readonly_fields = ("updated_at", )
 
     fieldsets = (
         ("Основные настройки цены", {
-            "fields": ("star_base_cost", "usd_base_rate", "is_use_usd_rate")
+            "fields": ("star_base_cost", )
         }),
-        ("Текущие рыночные данные", {
-            "fields": ("usd_current_rate_display", "last_usd_rate_update_display"),
-            "description": "Эти данные обновляются автоматически и используются для расчета, если включена опция выше."
-        }),
+        # ("Основные настройки цены", {
+        #     "fields": ("star_base_cost", "usd_base_rate", "is_use_usd_rate")
+        # }),
+        # ("Текущие рыночные данные", {
+        #     "fields": ("usd_current_rate_display", "last_usd_rate_update_display"),
+        #     "description": "Эти данные обновляются автоматически и используются для расчета, если включена опция выше."
+        # }),
         ("Статус бота", {
-            "fields": ("maintenance_mode",),
+            "fields": ("maintenance_mode", ),
         }),
+        ("Общее", {
+            "fields": ("updated_at", )
+        })
     )
 
-    def usd_current_rate_display(self, obj: object) -> Decimal:
-        return ExchangeRate.get_solo().usd_rate
-
-    usd_current_rate_display.short_description = "Текущий курс доллара"
-
-    def last_usd_rate_update_display(self, obj: object) -> str:
-        return localize(timezone.template_localtime(ExchangeRate.get_solo().updated_at))
-
-    last_usd_rate_update_display.short_description = "Дата последнего обновления курса"
+    # def usd_current_rate_display(self, obj: object) -> Decimal:
+    #     return ExchangeRate.get_solo().usd_rate
+    #
+    # usd_current_rate_display.short_description = "Текущий курс доллара"
+    #
+    # def last_usd_rate_update_display(self, obj: object) -> str:
+    #     return localize(timezone.template_localtime(ExchangeRate.get_solo().updated_at))
+    #
+    # last_usd_rate_update_display.short_description = "Дата последнего обновления курса"
 
 
 @final
@@ -152,17 +173,18 @@ class MonthlyProfitAdmin(admin.ModelAdmin):
         # 2. Группируем (TruncMonth) по месяцу создания
         # 3. Суммируем поле amount_fiat
         monthly_stats = (
-            Transaction.objects.filter(status="SUCCESS")
+            Transaction.objects
+            .filter(status="SUCCESS")
             .annotate(month=TruncMonth("created_at"))
             .values("month")
-            .annotate(total_profit=Sum("amount_fiat"))
+            .annotate(monthly_profit=Sum("amount_fiat"))
             .order_by("-month")
         )
 
         total_all_time = (
             Transaction.objects
             .filter(status="SUCCESS")
-            .aggregate(Sum("amount_fiat"))["amount_fiat__sum"] or 0
+            .aggregate(total_profit=Sum("amount_fiat"))["total_profit"] or 0
         )
 
         extra_context = extra_context or {}

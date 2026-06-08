@@ -1,4 +1,5 @@
 from telegram import Update, Message
+from telegram.constants import ParseMode
 
 from bot.renderers.base import render_screen
 from bot.keyboards.main import build_main_menu_kb
@@ -23,4 +24,4 @@ async def send_empty_username_alert(update: Update) -> Message:
         f"Как сделать себе <b>username</b>:\n"
         f"⚙️ Настройки -> 👤 Мой аккаунт -> @ Имя пользователя (не путать с Имя)"
     )
-    return await update.effective_user.send_message(text)
+    return await update.effective_user.send_message(text, parse_mode=ParseMode.HTML)

@@ -16,11 +16,17 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DATA_DIR = BASE_DIR / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+AUDIT_LOG_FILE = DATA_DIR / 'payments_audit.log'
+
 
 env = environ.Env(
     DEBUG=(bool, False),
     USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
+    CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
 )
 
 
@@ -32,6 +38,10 @@ environ.Env.read_env(BASE_DIR / '.env')
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+
+CELERY_BROKER_URL = env('CELERY_BROKER_URL')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
 
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
 
@@ -67,15 +77,18 @@ LOGGING = {
     },
     'formatters': {
         'verbose': {'format': '{levelname} {asctime} {module} {message}', 'style': '{'},
+        'audit_format': {'format': '{levelname} - {asctime} - {message}', 'style': '{'},
     },
     'handlers': {
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
         'django_console': {'class': 'logging.StreamHandler', 'formatter': 'verbose', 'filters': ['skip_not_found']},
+        'audit_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': str(AUDIT_LOG_FILE), 'formatter': 'audit_format'},
     },
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {
         'django': {'handlers': ['django_console'], 'level': 'INFO', 'propagate': False},
         'httpx': {'handlers': ['console'], 'level': 'WARNING'},
+        'payment_audit': {'handlers': ['audit_file', 'console'], 'level': 'INFO', 'propagate': False},
     },
 }
 

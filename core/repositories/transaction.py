@@ -53,7 +53,8 @@ class TransactionRepository:
                     minutes=expires_in_datetime.minute,
                     seconds=expires_in_datetime.second
                 )
-                new_transaction.expires_at = new_transaction.created_at + expires_in_td
+                delay = timezone.timedelta(minutes=30.0)
+                new_transaction.expires_at = new_transaction.created_at + expires_in_td + delay
                 new_transaction.save(update_fields=["expires_at"])
 
             if json_payload is None:
@@ -150,7 +151,7 @@ class TransactionRepository:
 
     async def delete_expired_transactions(
             self,
-            expires_in_td: timezone.timedelta,
+            expires_in_td: timezone.timedelta | None,
             transaction_ids: list[UUID] | UUID | None = None
     ):
         """
@@ -158,12 +159,22 @@ class TransactionRepository:
 
         Arguments:
 
-        - `expires_in` - timedelta, время жизни от времени создания транзакции.
+        - `expires_in` - timedelta, время жизни от времени создания транзакции; если None, проверка будет идти по полю
+        expired_at у транзакции.
 
         - `transaction_ids` - list[UUID] | UUID | None, если указано, то удалит либо транзакции с указанными ID,
         либо конкретную транзакцию, иначе удалит все найденные транзакции (в каждом случае проверяется
         статус PENDING и время жизни).
         """
+
+        if expires_in_td is None:
+            transactions = self.model.objects.filter(
+                status=TransactionStatus.PENDING,
+                expires_at__lt=timezone.now()
+            )
+            _ = await transactions.adelete()
+            return
+
         transactions = self.model.objects.filter(
             status=TransactionStatus.PENDING,
             created_at__lt=timezone.now() - expires_in_td

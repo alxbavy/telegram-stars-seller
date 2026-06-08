@@ -20,7 +20,7 @@
                     {% for entry in monthly_stats %}
                         <tr class="profit-report__row">
                             <td class="profit-report__cell">{{ entry.month|date:"F Y" }}</td>
-                            <td class="profit-report__cell">{{ entry.total_profit }} ₽</td>
+                            <td class="profit-report__cell">{{ entry.monthly_profit|floatformat:2 }} ₽</td>
                         </tr>
                     {% empty %}
                         <tr class="profit-report__row">
@@ -33,7 +33,7 @@
                     {% if monthly_stats %}
                     <tr class="profit-report__row profit-report__row--total">
                         <td class="profit-report__cell">ИТОГО ЗА ВСЁ ВРЕМЯ:</td>
-                        <td class="profit-report__cell">{{ total_all_time }} ₽</td>
+                        <td class="profit-report__cell">{{ total_all_time|floatformat:2 }} ₽</td>
                     </tr>
                     {% endif %}
                 </tbody>

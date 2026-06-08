@@ -8,12 +8,14 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 """
 
 import os
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable
+from collections.abc import Coroutine
 
 from django.conf import settings
 from django.core.asgi import get_asgi_application
 
 from blacknoise import BlackNoise
+
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 

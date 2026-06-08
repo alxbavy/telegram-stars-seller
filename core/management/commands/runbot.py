@@ -1,11 +1,15 @@
 import os
+import datetime
+import warnings
 from pathlib import Path
 from typing import Any, cast, final, override
-import warnings
+from zoneinfo import ZoneInfo
+
+from dishka import AsyncContainer, make_async_container
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from dishka import AsyncContainer, make_async_container
+
 from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder, Application, ExtBot,
@@ -17,6 +21,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
+from bot.cleanup import clear_expired_transactions
 from bot.handlers.error import error_handler
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
@@ -54,13 +59,26 @@ class Command(BaseCommand):
             commands.append(BotCommand("prices", user_warning))
         _ = await application.bot.set_my_commands(commands)
 
+        target_time = datetime.time(
+            hour=3,
+            minute=0,
+            second=0,
+            tzinfo=ZoneInfo(settings.TIME_ZONE)
+        )
+
         container = cast(AsyncContainer, application.bot_data["dishka_container"])
         async with container() as request_container:
             payment_service = await request_container.get(PaymentService)
+            self.stdout.write("Очищаем протухшие транзакции...")
+            await payment_service.delete_expired_transactions()
+            self.stdout.write("Очистка протухших транзакций завершена!")
 
-            self.stdout.write("Очищаем протухшие транзакции (возрастом более 1 часа)...")
-            await payment_service.delete_transactions("01:00:00")
-            self.stdout.write("Очистка протухших транзакций (возрастом более 1 часа) завершена!")
+        self.stdout.write(f"Запускаем ежедневную задачу на {target_time} - {target_time.tzinfo} для очистки протухших транзакций")
+        _ = application.job_queue.run_daily(
+            callback=clear_expired_transactions,
+            time=target_time,
+            name="daily_night_job"
+        )
 
     @override
     def handle(self, *args, **options):

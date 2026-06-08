@@ -12,7 +12,7 @@ from django.http import HttpRequest
 from bot.keyboards.error import build_error_kb
 
 from core.domain.enums import TransactionStatus
-from core.integrations.platega.schemas import PlategaHeaders, PlategaRequestJson, PaymentPayloadDict
+from core.integrations.platega.schemas import PlategaHeaders, PlategaWebhookRequestJson, PaymentPayloadDict
 from core.services.support import SupportService
 from core.services.payment import PaymentService
 from core.business_logic_container import container
@@ -46,7 +46,7 @@ def status_code_or_access_granted(request: HttpRequest) -> int | bool:
     return True
 
 
-def parse_payload(data: PlategaRequestJson) -> PaymentPayloadDict | None:
+def parse_payload(data: PlategaWebhookRequestJson) -> PaymentPayloadDict | None:
     parsed_payload = cast(object, json.loads(data["payload"]))
     if not isinstance(parsed_payload, dict):
         logger.exception("Request from Platega contains payload which is not a dict")
@@ -65,8 +65,8 @@ def parse_payload(data: PlategaRequestJson) -> PaymentPayloadDict | None:
     return cast(PaymentPayloadDict, cast(object, parsed_payload))
 
 
-def parse_request(request: HttpRequest) -> tuple[PlategaRequestJson, PaymentPayloadDict | None]:
-    data = cast(PlategaRequestJson, json.loads(request.body))
+def parse_request(request: HttpRequest) -> tuple[PlategaWebhookRequestJson, PaymentPayloadDict | None]:
+    data = cast(PlategaWebhookRequestJson, json.loads(request.body))
     parsed_payload = parse_payload(data)
     return data, parsed_payload
 
@@ -88,7 +88,7 @@ async def safe_remove_reply_markup_for_order_message(bot: ExtBot[None], user_id:
 
 
 async def safe_process_transaction(
-        data: PlategaRequestJson, parsed_payload: PaymentPayloadDict | None
+        data: PlategaWebhookRequestJson, parsed_payload: PaymentPayloadDict | None
 ) -> str | Transaction | TransactionStatus | None:
     """
     - Если error_msg не None, значит произошла ошибка, тогда второй объект будет None.

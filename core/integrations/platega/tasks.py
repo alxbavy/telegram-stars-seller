@@ -13,7 +13,7 @@ from telegram.constants import ParseMode
 from django.conf import settings
 
 from core.domain.enums import TransactionStatus
-from core.integrations.platega.schemas import PlategaRequestJson, PaymentPayloadDict
+from core.integrations.platega.schemas import PlategaWebhookRequestJson, PaymentPayloadDict
 from core.integrations.platega.webhook_utils import (
     get_support_url,
     safe_remove_reply_markup_for_order_message,
@@ -32,7 +32,7 @@ redis_client = from_url(settings.CELERY_BROKER_URL)
 
 
 @shared_task
-def process_payment_background_task(data: PlategaRequestJson, parsed_payload: PaymentPayloadDict | None):
+def process_payment_background_task(data: PlategaWebhookRequestJson, parsed_payload: PaymentPayloadDict | None):
     """
     Эта задача выполнится в фоне воркером Celery.
 
@@ -63,7 +63,7 @@ def process_payment_background_task(data: PlategaRequestJson, parsed_payload: Pa
         lock.release()
 
 
-async def run_async_payment_workflow(data: PlategaRequestJson, parsed_payload: PaymentPayloadDict | None):
+async def run_async_payment_workflow(data: PlategaWebhookRequestJson, parsed_payload: PaymentPayloadDict | None):
     bot = ExtBot(token=settings.TELEGRAM_BOT_TOKEN)
     parse_mode = ParseMode.HTML
 

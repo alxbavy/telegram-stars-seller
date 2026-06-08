@@ -10,7 +10,7 @@ from django.utils.timezone import datetime, timedelta
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.client import PlategaClient
-from core.integrations.platega.schemas import PaymentPayloadDict, PlategaRequestJson
+from core.integrations.platega.schemas import PaymentPayloadDict, PlategaWebhookRequestJson
 from core.models import Transaction, TARGET_SELF
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
@@ -185,7 +185,7 @@ class PaymentService:
     async def get_transaction_by_uuid(
             self,
             transaction_uuid: UUID,
-            data: PlategaRequestJson, payload: PaymentPayloadDict | None
+            data: PlategaWebhookRequestJson, payload: PaymentPayloadDict | None
     ) -> Transaction | None:
         transaction = None
         try:

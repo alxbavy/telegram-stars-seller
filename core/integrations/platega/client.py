@@ -12,7 +12,7 @@ from typing import cast, final
 from django.conf import settings
 
 from core.dto.payment import PaymentDTO
-from core.integrations.platega.schemas import PlategaAPIError, TransactionCreationResponse
+from core.integrations.platega.schemas import PaymentRequestJson, PlategaAPIError, TransactionCreationResponse
 
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class PlategaClient:
             amount: float,
             currency: str,
             description: str,
-            payload: str = ""
+            payload: str
     ) -> PaymentDTO:
         # Заглушка для тестов
         # import uuid
@@ -53,39 +53,41 @@ class PlategaClient:
         #     expires_in="00:30:00"
         # )
 
+        if not payload:
+            logger.exception("payload пуст при создании транзакции в платеге")
+            raise PlategaAPIError("payload пуст при создании транзакции в платеге")
+
         description_pattern = re.compile(r"^TgId:\d+\nUserId:\d+$")
         if not description_pattern.search(description):
             raise ValueError("Platega payment description is invalid")
 
         method = "POST"
-        data = {
-            "paymentMethod": str(payment_method),
+        data: PaymentRequestJson = {
+            "paymentMethod": payment_method,
             "paymentDetails": {
-                "amount": str(amount),
+                "amount": amount,
                 "currency": currency,
             },
             "description": description,
+            "payload": payload,
         }
-        if payload:
-            data["payload"] = payload
 
-        await asyncio.sleep(2)
         response = await self._make_request(method, self.PAYMENT_WITH_METHOD_PATH, data)
 
         if response.status_code == 200:
-            data = cast(TransactionCreationResponse, response.json())
+            response_data = cast(TransactionCreationResponse, response.json())
 
-            if isinstance(data["paymentDetails"], dict):
-                price = str(data["paymentDetails"]["amount"])
+            if isinstance(response_data["paymentDetails"], dict):
+                price = str(response_data["paymentDetails"]["amount"])
             else:
                 price_pattern = re.compile(r"^(\S+)")
-                price = price_pattern.match(data["paymentDetails"]).group()
+                price = price_pattern.match(response_data["paymentDetails"]).group()
 
             return PaymentDTO(
-                transaction_id=UUID(data["transactionId"]),
-                pay_url=data["redirect"],
+                transaction_id=UUID(response_data["transactionId"]),
+                pay_url=response_data["redirect"],
                 price=Decimal(price),
-                expires_in=data["expiresIn"]
+                expires_in=response_data["expiresIn"]
             )
 
         if response.status_code == 400:

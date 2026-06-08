@@ -8,6 +8,9 @@ from solo.models import SingletonModel
 from core.domain.enums import TransactionStatus, TransactionType
 
 
+TARGET_SELF = "Себе"
+
+
 class SaveKwargs(TypedDict, total=False):
     force_insert: bool
     force_update: bool
@@ -23,6 +26,7 @@ class TelegramUser(models.Model):
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, blank=True, verbose_name="Username")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @override
     def save(self, **kwargs: Unpack[SaveKwargs]):
@@ -57,7 +61,7 @@ class Transaction(models.Model):
     )
     amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
     amount_stars = models.IntegerField(verbose_name="Количество звезд")
-    target_username = models.CharField(max_length=255, blank=True, default="Себе", verbose_name="Кому")
+    target_username = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
     status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     expires_at = models.DateTimeField(null=True, blank=True, verbose_name="Истекает")
@@ -182,6 +186,7 @@ class GlobalSettings(SingletonModel):
         default=False,
         verbose_name="Технический перерыв"
     )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @classmethod
     async def aget_solo(cls):

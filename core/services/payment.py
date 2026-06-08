@@ -11,7 +11,7 @@ from core.dto.payment import PaymentDTO, PaymentMethodDTO
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.client import PlategaClient
 from core.integrations.platega.schemas import PaymentPayloadDict, PlategaRequestJson
-from core.models import Transaction
+from core.models import Transaction, TARGET_SELF
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 from core.repositories.payment import PaymentRepository
@@ -111,20 +111,23 @@ class PaymentService:
         if user_buyer is None:
             raise UnregisteredUser(user_id)
 
+        payload_target_username = None
         if not target_username:
             if not user_buyer.username:
                 raise NoUsernameError()
 
-            target_username = user_buyer.username
+            payload_target_username = user_buyer.username
 
         if "platega" in payment_api.lower():
             description = f"TgId:{user_id}\nUserId:{user_id}"
+            if payload_target_username is None:
+                payload_target_username = target_username
             payload: PaymentPayloadDict = {
                 "user_id": user_id,
                 "message_id": message_id,
                 "price": float(price),
                 "stars_count": stars_count,
-                "target_username": target_username
+                "target_username": payload_target_username,
             }
             payment_dto = await self._platega_client.create_payment( # TODO: протестировать клиент платеги
                 int(method),
@@ -194,6 +197,14 @@ class PaymentService:
             if payload is None:
                 return None
 
+            target_username = payload["target_username"]
+            try:
+                telegram_user = await self._user_repo.get_by_telegram_id(payload["user_id"])
+                if telegram_user and telegram_user.username == payload["target_username"]:
+                    target_username = ""  # Пустое значение, чтобы использовалось TARGET_SELF
+            except Exception as db_err:
+                logger.exception(f"DB error when trying to get user for creating transaction {transaction_uuid}\n{db_err =}")
+
             try:
                 transaction = await self.create_transaction(
                     transaction_id=str(transaction_uuid),
@@ -202,7 +213,7 @@ class PaymentService:
                     stars_count=payload["stars_count"],
                     payment_api="Platega (Generated)",
                     method=str(data["paymentMethod"]),
-                    target_username=payload["target_username"],
+                    target_username=target_username,
                     payload=data
                 )
             except Exception as transaction_err:
@@ -230,8 +241,11 @@ class PaymentService:
             return transaction
 
         try:
+            target_username = transaction.target_username
+            if transaction.target_username == TARGET_SELF:
+                target_username = transaction.telegram_user.username
             response: SendStarsResponse = await self._fragment_client.send_stars(
-                transaction.target_username, transaction.amount_stars
+                target_username, transaction.amount_stars
             )
         except Exception as request_err:
             logger.exception(f"Error when sending stars for transaction {transaction.id}\n{request_err = }")

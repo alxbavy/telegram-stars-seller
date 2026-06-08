@@ -51,14 +51,16 @@ class TransactionInline(admin.TabularInline, TransactionTypeMixin):
 @final
 @admin.register(TelegramUser)
 class TelegramUserAdmin(admin.ModelAdmin):
-    list_display = ("username", "telegram_id", "created_at")
+    list_display = ("username", "telegram_id", "created_at", "updated_at")
     search_fields = ("username", "telegram_id")
-    list_filter = (("created_at", admin.DateFieldListFilter),)
+    list_filter = (
+        ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter)
+    )
     search_help_text = "Поиск по имени пользователя или ID"
     if settings.DEBUG:
-        readonly_fields = ("created_at",)
+        readonly_fields = ("created_at", "updated_at")
     else:
-        readonly_fields = ("username", "telegram_id", "created_at")
+        readonly_fields = ("username", "telegram_id", "created_at", "updated_at")
     inlines = [TransactionInline]
 
 
@@ -126,30 +128,37 @@ class PaymentAPIAdmin(admin.ModelAdmin):
 @admin.register(GlobalSettings)
 class GlobalSettingsAdmin(SingletonModelAdmin):
     # Добавляем отображение полей из ExchangeRate прямо сюда с помощью "виртуальных" полей
-    readonly_fields = ("usd_current_rate_display", "last_usd_rate_update_display")
+    # readonly_fields = ("usd_current_rate_display", "last_usd_rate_update_display")
+    readonly_fields = ("updated_at", )
 
     fieldsets = (
         ("Основные настройки цены", {
-            "fields": ("star_base_cost", "usd_base_rate", "is_use_usd_rate")
+            "fields": ("star_base_cost", )
         }),
-        ("Текущие рыночные данные", {
-            "fields": ("usd_current_rate_display", "last_usd_rate_update_display"),
-            "description": "Эти данные обновляются автоматически и используются для расчета, если включена опция выше."
-        }),
+        # ("Основные настройки цены", {
+        #     "fields": ("star_base_cost", "usd_base_rate", "is_use_usd_rate")
+        # }),
+        # ("Текущие рыночные данные", {
+        #     "fields": ("usd_current_rate_display", "last_usd_rate_update_display"),
+        #     "description": "Эти данные обновляются автоматически и используются для расчета, если включена опция выше."
+        # }),
         ("Статус бота", {
-            "fields": ("maintenance_mode",),
+            "fields": ("maintenance_mode", ),
         }),
+        ("Общее", {
+            "fields": ("updated_at", )
+        })
     )
 
-    def usd_current_rate_display(self, obj: object) -> Decimal:
-        return ExchangeRate.get_solo().usd_rate
-
-    usd_current_rate_display.short_description = "Текущий курс доллара"
-
-    def last_usd_rate_update_display(self, obj: object) -> str:
-        return localize(timezone.template_localtime(ExchangeRate.get_solo().updated_at))
-
-    last_usd_rate_update_display.short_description = "Дата последнего обновления курса"
+    # def usd_current_rate_display(self, obj: object) -> Decimal:
+    #     return ExchangeRate.get_solo().usd_rate
+    #
+    # usd_current_rate_display.short_description = "Текущий курс доллара"
+    #
+    # def last_usd_rate_update_display(self, obj: object) -> str:
+    #     return localize(timezone.template_localtime(ExchangeRate.get_solo().updated_at))
+    #
+    # last_usd_rate_update_display.short_description = "Дата последнего обновления курса"
 
 
 @final

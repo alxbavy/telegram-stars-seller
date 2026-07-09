@@ -122,8 +122,10 @@ class PaymentService:
 
         if "platega" in payment_api.lower():
             description = f"For telegram user with ID {user_id}"
+
             if payload_target_username is None:
                 payload_target_username = target_username
+
             payload: PaymentPayloadDict = {
                 "user_id": user_id,
                 "message_id": message_id,
@@ -136,6 +138,7 @@ class PaymentService:
                 "promo_name": "",
                 "promo_discount": None
             }
+
             if promo is not None:
                 payload["promo_id"] = promo.id
                 payload["promo_name"] = promo.name
@@ -147,6 +150,7 @@ class PaymentService:
                 if not target_username:
                     raise NoUsernameError("Для перевода должен быть username у покупателя или у получателя")
                 username = f"отсутствует, но это подарок для {target_username}"
+
             payment_dto = await self._platega_client.create_payment(
                 int(method),
                 float(price), "RUB",
@@ -155,6 +159,9 @@ class PaymentService:
                 username,
                 payload=json.dumps(payload, ensure_ascii=False)
             )
+
+            if promo is not None:
+                payment_dto.price = payment_dto.price / (1 - promo.discount / 100)
 
         else:
             raise NotImplementedError("Only Platega API is supported now")

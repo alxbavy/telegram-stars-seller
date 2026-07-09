@@ -163,8 +163,14 @@ async def show_order_confirmation(
         is_gift: bool, target_username: str | None = None,
         active_promo: PromoCode | None = None
 ) -> Message:
+    promo_name = ""
+    promo_discount = None
+    if active_promo is not None:
+        promo_name = active_promo.name
+        promo_discount = active_promo.discount
+
     promo_sentence, price_sentence = _get_promo_and_price_sentences(
-        price, active_promo.name, active_promo.discount
+        price, promo_name, promo_discount
     )
     text = (
         f"☝️ <b>Проверь заказ перед оплатой!</b>\n\n"
@@ -223,9 +229,15 @@ async def edit_order_created_message(
         is_gift: bool, target_username: str | None = None,
         active_promo: PromoCode | None = None
 ) -> Message | None:
+    promo_name = ""
+    promo_discount = None
+    if active_promo is not None:
+        promo_name = active_promo.name
+        promo_discount = active_promo.discount
+
     text = get_order_created_text(
         transaction_id, stars, price, target_username, expires_in,
-        active_promo.name, active_promo.discount
+        promo_name, promo_discount
     )
     photo = "order_confirmed_gift.jpg" if is_gift else "order_confirmed_self.jpg"
     return await update_existing_message(

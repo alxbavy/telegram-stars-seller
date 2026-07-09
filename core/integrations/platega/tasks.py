@@ -410,6 +410,10 @@ async def process_payment_background_workflow[**P,R](
 
     parse_mode = ParseMode.HTML.value
 
+    promo_discount = transaction.metadata_info.promo_discount
+    if promo_discount is not None:
+        promo_discount = str(promo_discount)
+
     _ = update_order_message_task.apply_async(
         args=(
             parse_mode,
@@ -422,7 +426,7 @@ async def process_payment_background_workflow[**P,R](
             transaction.pay_url,
             transaction.target_username not in [TARGET_SELF, transaction.telegram_user.username],
             transaction.metadata_info.promo_name,
-            str(transaction.metadata_info.promo_discount)
+            promo_discount
         ),
         kwargs={"started_at": None}
     )

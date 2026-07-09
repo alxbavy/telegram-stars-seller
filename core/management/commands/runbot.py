@@ -1,11 +1,7 @@
 import os
-import datetime
 import warnings
 from pathlib import Path
-from typing import Any, cast, final, override
-from zoneinfo import ZoneInfo
-
-from dishka import AsyncContainer, make_async_container
+from typing import final, override
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -21,18 +17,16 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
-from bot.cleanup import clear_expired_transactions
 from bot.handlers.error import error_handler
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 
-from core.services.payment import PaymentService
-from core.ioc import BusinessLogicProvider
+from core.ioc import get_container, close_container
 
 
 type DefaultApplication = Application[
     ExtBot[None], ContextTypes.DEFAULT_TYPE,
-    dict[Any,Any], dict[Any,Any], dict[Any,Any],
+    dict[object,object], dict[object,object], dict[object,object],
     JobQueue[ContextTypes.DEFAULT_TYPE]
 ]
 
@@ -40,8 +34,9 @@ type DefaultApplication = Application[
 @final
 class Command(BaseCommand):
     help = "Запуск Telegram бота"
-    # Настройка кастомных таймаутов (в секундах)
+    # Настройка кастомных тайм-аутов (в секундах)
     request_config = HTTPXRequest(
+        connection_pool_size=20,  # Кол-во открытых соединений
         connect_timeout=20.0,     # Время на установку соединения
         read_timeout=25.0,        # Время ожидания ответа от серверов Telegram
         write_timeout=25.0,       # Время на отправку данных (обычный текст)
@@ -56,39 +51,30 @@ class Command(BaseCommand):
         if settings.DEBUG:
             user_warning = "Режим отладки - если ты обычный пользователь, сообщи об ошибке в тех. поддержку"
             commands.append(BotCommand("balance", user_warning))
+            commands.append(BotCommand("balance_debug", user_warning))
             commands.append(BotCommand("prices", user_warning))
+            commands.append(BotCommand("prices_debug", user_warning))
         _ = await application.bot.set_my_commands(commands)
 
-        target_time = datetime.time(
-            hour=3,
-            minute=0,
-            second=0,
-            tzinfo=ZoneInfo(settings.TIME_ZONE)
-        )
+    async def post_stop(self, application: DefaultApplication) -> None:
+        self.stdout.write("Bot is stopping, closing dishka container...")
 
-        container = cast(AsyncContainer, application.bot_data["dishka_container"])
-        async with container() as request_container:
-            payment_service = await request_container.get(PaymentService)
-            self.stdout.write("Очищаем протухшие транзакции...")
-            await payment_service.delete_expired_transactions()
-            self.stdout.write("Очистка протухших транзакций завершена!")
+        try:
+            await close_container()
+            self.stdout.write("Dishka container closed successfully!")
 
-        self.stdout.write(f"Запускаем ежедневную задачу на {target_time} - {target_time.tzinfo} для очистки протухших транзакций")
-        _ = application.job_queue.run_daily(
-            callback=clear_expired_transactions,
-            time=target_time,
-            name="daily_night_job"
-        )
+        except Exception as err:
+            self.stderr.write(f"Error while closing dishka container in bot: {err}")
 
     @override
-    def handle(self, *args, **options):
-        # TODO: раскомментировать при релизе (сейчас возникает предупреждение о per_message=False, но оно возникает в любом
-        #       случае, т. е. и при True; от него зависит поведение того, как выбирается состояние для ConversationHandler;
-        #       при False оно одно для всех сообщений; при True то сообщение, которое генерирует функция начала Conversation,
-        #       будет сохранено по его id, и конкретно для него будет изменяться состояние, т.е. можно будет иметь несколько
-        #       Conversation со своими состояниями; в нашем случае нельзя использовать per_message=True, т.к. иногда
-        #       начальное сообщение от Conversation необходимо удалить и сделать новое - в таком случае id не обновится
-        #       для хэндлера)
+    def handle(self, *args: object, **options: object):
+        # Есть предупреждение о per_message=False, но оно возникает в любом случае, т. е. и при True;
+        # от него зависит поведение того, как выбирается состояние для ConversationHandler;
+        # при False оно одно для всех сообщений; при True то сообщение, которое генерирует функция начала Conversation,
+        # будет сохранено по его id, и конкретно для него будет изменяться состояние, т.е. можно будет иметь несколько
+        # Conversation со своими состояниями; в нашем случае нельзя использовать per_message=True, т.к. иногда
+        # начальное сообщение от Conversation необходимо удалить и сделать новое - в таком случае id не обновится
+        # для хэндлера)
         warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
         self.stdout.write("Бот запускается...")
@@ -98,7 +84,7 @@ class Command(BaseCommand):
             self.stderr.write("Ошибка: TELEGRAM_BOT_TOKEN не найден в .env")
             return
 
-        container = make_async_container(BusinessLogicProvider())
+        container = get_container()
 
         # data_dir = Path(settings.BASE_DIR) / "bot" / "data"
         # data_dir.mkdir(parents=True, exist_ok=True)
@@ -112,13 +98,14 @@ class Command(BaseCommand):
         #     update_interval=30
         # )
 
-        # .persistence(persistence) TODO: раскомментировать в релизе, в дебаге персистентность мешает
+        # .persistence(persistence) TODO: продумать персистентность
         application = (
             ApplicationBuilder()
             .token(token)
             .request(self.request_config)
             .arbitrary_callback_data(True)
             .post_init(self.post_init)
+            .post_stop(self.post_stop)
             .build()
         )
         application.bot_data["dishka_container"] = container

@@ -1,7 +1,9 @@
-from typing import Annotated, TypedDict, NotRequired, Protocol
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+from typing import Annotated, TypedDict, NotRequired
+
+from core.integrations.fragment.enums import FragmentStatus
 
 
 class HasCurrency(TypedDict):
@@ -57,8 +59,14 @@ class SendStarsResponse(TypedDict):
     sender: Sender | None
     price: StarsPrice | None
     fee: StarsFee | None
-    ref_id: str | None
+    ref_id: NotRequired[str | None]
     status: str
     type: str
     error: object
     created_at: Annotated[str, datetime]
+
+
+class FragmentTransactionKwargs(TypedDict):
+    fragment_id: UUID
+    id_from_payment_api: UUID
+    status: FragmentStatus

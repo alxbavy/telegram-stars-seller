@@ -16,6 +16,7 @@ from bot.context import get_view_context
 from bot.enums import MainMenuAction
 from bot.states import BotConversationState
 
+from core.repositories.utils import db_action_with_tenacity
 from core.services.support import SupportService
 from core.services.user import UserService
 
@@ -47,7 +48,9 @@ async def _handle_main_menu_action_profile(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         user_service: UserService
 ):
-    profile_data = await user_service.get_profile_data(update.effective_user.id)
+    profile_data = await db_action_with_tenacity(
+        user_service.get_profile_data(update.effective_user.id)
+    )
     ctx = get_view_context(context)
     ctx.profile_data = profile_data
     _ = await show_profile_page(update, context, profile_data)

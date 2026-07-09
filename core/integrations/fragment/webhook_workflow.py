@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from uuid import UUID
+from typing import cast
+
+from celery import Task
+
+from core.integrations.fragment.enums import FragmentStatus
+from core.integrations.fragment.webhook_utils import (
+    safe_get_fragment_tx_with_retries,
+    safe_create_fragment_tx_with_retries,
+    safe_set_status_for_fragment_tx_id_with_retries
+)
+
+
+async def update_fragment_transaction_workflow[**P,R](
+        celery_task: Task[P,R],
+        fragment_tx_id: UUID, transaction_id: UUID,
+        new_status: str,
+        *,
+        started_at: float
+) -> bool:
+    kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
+    kwargs["started_at"] = started_at
+
+    new_status = cast(FragmentStatus, new_status)
+
+    timeout = 300.0  # 5 минут
+
+    transaction = await safe_get_fragment_tx_with_retries(
+        celery_task, started_at, kwargs,
+        timeout,
+        fragment_tx_id
+    )
+    if transaction is None:
+        transaction = await safe_create_fragment_tx_with_retries(
+            celery_task, started_at, kwargs, timeout,
+            fragment_tx_id, transaction_id, new_status
+        )
+        if transaction is None:
+            return False
+
+    if transaction.status == new_status:
+        return True
+
+    return await safe_set_status_for_fragment_tx_id_with_retries(
+        celery_task, started_at, kwargs, timeout,
+        fragment_tx_id, new_status
+    )

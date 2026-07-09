@@ -16,12 +16,16 @@ from bot.renderers.profile import show_profile_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.handlers_registry import build_async_handlers_register
+from bot.utils.injector import inject
 from bot.utils.type_aliases import UpdateWithContextHandler
 
 from bot.callbacks import BackCallback, cast_callback
 from bot.context import clear_profile_data, clear_temporary_messages, get_view_context
 from bot.enums import BackDestination
 from bot.states import BotConversationState
+
+from core.repositories.utils import db_action_with_tenacity
+from core.services.user import UserService
 
 
 back_destination_registry: dict[BackDestination, UpdateWithContextHandler[..., BotConversationState]] = {}
@@ -70,26 +74,34 @@ async def _handle_destination_choose_payment(update: Update, context: ContextTyp
 
     cb_data = cast_callback(BackCallback, update.callback_query.data)
     is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)
-    username = ctx.order.target_username if is_gift else None
+    username = ctx.order.target_username if is_gift else ""
 
-    _ = await show_payment_methods_dynamic(update, context, stars_count, is_gift=is_gift, username=username)
+    _ = await show_payment_methods_dynamic(update, context, stars_count, username=username)
 
     return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
 
 
 @register(BackDestination.PROFILE)
-async def _handle_destination_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@inject
+async def _handle_destination_profile(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        user_service: UserService
+):
     ctx = get_view_context(context)
     profile_data = ctx.profile_data
+    if profile_data is None:
+        profile_data = await db_action_with_tenacity(
+            user_service.get_profile_data(update.effective_user.id)
+        )
     _ = await show_profile_page(update, context, profile_data)
     return BotConversationState.PROFILE
 
 
-@register(BackDestination.REFERRALS_LIST)
-async def _handle_destination_referrals_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Заглушка для возврата к списку рефералов
-    # _ = await show_referrals_list(update, context, referrals_dto)
-    return BotConversationState.REFERRALS_LIST
+# @register(BackDestination.REFERRALS_LIST)
+# async def _handle_destination_referrals_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     # Заглушка для возврата к списку рефералов
+#     # _ = await show_referrals_list(update, context, referrals_dto)
+#     return BotConversationState.REFERRALS_LIST
 
 
 @ensure_use_active_conversation_with_callback

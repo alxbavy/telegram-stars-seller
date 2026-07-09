@@ -1,21 +1,19 @@
-from collections.abc import Mapping
 import json
-from decimal import Decimal
 from typing import final, override
+from collections.abc import Mapping
 
 from django import forms
 from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest
-from django.utils import timezone
-from django.utils.formats import localize
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
+
 from solo.admin import SingletonModelAdmin
 
-from .models import (
-    PaymentAPI, TelegramUser, Transaction, TransactionMetadata,
-    PaymentMethod, GlobalSettings, ExchangeRate, FragmentAPI,
+from core.models import (
+    FragmentTransaction, PaymentAPI, PromoCode, TelegramUser, Transaction, TransactionMetadata,
+    PaymentMethod, GlobalSettings, FragmentAPI,
     MonthlyProfit
 )
 
@@ -41,26 +39,61 @@ class TransactionInline(admin.TabularInline, TransactionTypeMixin):
     can_delete = False
     ordering = ("-created_at",)
     verbose_name = "История транзакций"
-    verbose_name_plural = "История транзакций"
+    verbose_name_plural = "Истории транзакций"
 
     @override
-    def has_add_permission(self, request: HttpRequest, obj: object | None = None):
-        return False
+    def has_add_permission(self, request: HttpRequest, obj: object | None = None):  return False
+
+
+@final
+class TelegramUserInline(admin.TabularInline):
+    model: type[TelegramUser] = TelegramUser
+    readonly_fields = ("username", "telegram_id", "promo_since", "created_at", "updated_at")
+    show_change_link = True
+    can_delete = False
+    ordering = ("-promo_since",)
+    verbose_name = "Список воспользовавшихся пользователей"
+    verbose_name_plural = "Списки воспользовавшихся пользователей"
+
+    @override
+    def has_add_permission(self, request: HttpRequest, obj: object | None = None):  return False
+
+
+@final
+@admin.register(PromoCode)
+class PromoCodeAdmin(admin.ModelAdmin):
+    list_display = (
+        "name", "discount", "usage_global", "usage_account", "is_active", "created_at", "updated_at"
+    )
+    ordering = ("-created_at", )
+    search_fields = ("name", "discount", "usage_global", "usage_account")
+    search_help_text = "Поиск по имени, скидке и использованиям"
+    list_filter = (
+        "is_active", ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter)
+    )
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [TelegramUserInline]
 
 
 @final
 @admin.register(TelegramUser)
 class TelegramUserAdmin(admin.ModelAdmin):
-    list_display = ("username", "telegram_id", "created_at", "updated_at")
-    search_fields = ("username", "telegram_id")
-    list_filter = (
-        ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter)
+    list_display = (
+        "username", "telegram_id", "active_promo", "promo_since", "created_at", "updated_at"
     )
+    ordering = ("-created_at", )
+    search_fields = ("username", "telegram_id", "active_promo__name")
     search_help_text = "Поиск по имени пользователя или ID"
+    list_filter = (
+        ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
+        ("promo_since", admin.DateFieldListFilter)
+    )
     if settings.DEBUG:
-        readonly_fields = ("created_at", "updated_at")
+        readonly_fields = ("promo_since", "created_at", "updated_at")
     else:
-        readonly_fields = ("username", "telegram_id", "created_at", "updated_at")
+        readonly_fields = (
+            "username", "telegram_id", "promo_since", "created_at", "updated_at"
+        )
     inlines = [TransactionInline]
 
 
@@ -91,7 +124,7 @@ class TransactionMetadataInline(admin.StackedInline):
 class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
     list_display = ("id", "telegram_user", "amount_stars", "amount_fiat", "target_username",
                     "status", "transaction_type", "created_at", "expires_at", "updated_at")
-    ordering = ("-created_at",)
+    ordering = ("-created_at", )
     list_filter = (
         "status", ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
         ("expires_at", admin.DateFieldListFilter)
@@ -105,7 +138,7 @@ class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
     @override
     def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
         if obj:
-            return tuple(list(self.readonly_fields) + list(self.readonly_fields_when_created))
+            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))
 
         return tuple(self.readonly_fields)
 
@@ -122,6 +155,29 @@ class PaymentMethodInline(admin.TabularInline):
 class PaymentAPIAdmin(admin.ModelAdmin):
     inlines = [PaymentMethodInline]
     list_display = ("name", )
+
+
+@final
+@admin.register(FragmentTransaction)
+class FragmentTransactionAdmin(admin.ModelAdmin):
+    list_display = (
+        "fragment_id", "id_from_payment_api", "status", "created_at", "updated_at"
+    )
+    ordering = ("-created_at", )
+    search_fields = ("fragment_id", "id_from_payment_api")
+    search_help_text = "Поиск по обоим ID"
+    list_filter = (
+        "status", ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter)
+    )
+    readonly_fields = ("created_at", "updated_at")
+    readonly_fields_when_created = ("fragment_id", "id_from_payment_api")
+
+    @override
+    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
+        if obj:
+            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))
+
+        return tuple(self.readonly_fields)
 
 
 @final
@@ -169,9 +225,6 @@ class MonthlyProfitAdmin(admin.ModelAdmin):
 
     @override
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, str] | None = None):
-        # 1. Берем только успешные транзакции
-        # 2. Группируем (TruncMonth) по месяцу создания
-        # 3. Суммируем поле amount_fiat
         monthly_stats = (
             Transaction.objects
             .filter(status="SUCCESS")

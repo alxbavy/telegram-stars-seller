@@ -19,11 +19,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / 'data'
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-AUDIT_LOG_FILE = DATA_DIR / 'payments_audit.log'
+PAYMENTS_LOG_FILE = DATA_DIR / 'payments_audit.log'
+CLEANUPS_LOG_FILE = DATA_DIR / 'cleanups_audit.log'
 
 
 env = environ.Env(
     DEBUG=(bool, False),
+    DEBUG_FRAGMENT=(bool, False),
+    DEBUG_PLATEGA=(bool, False),
     USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
     CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
@@ -37,7 +40,11 @@ environ.Env.read_env(BASE_DIR / '.env')
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
+DEBUG_FRAGMENT=env('DEBUG_FRAGMENT')
+DEBUG_PLATEGA=env('DEBUG_PLATEGA')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+SITE_DOMAIN = env('SITE_DOMAIN')
+FRAGMENT_WEBHOOK_SECRET = env('FRAGMENT_WEBHOOK_SECRET')
 
 CELERY_BROKER_URL = env('CELERY_BROKER_URL')
 CELERY_ACCEPT_CONTENT = ['json']
@@ -82,13 +89,15 @@ LOGGING = {
     'handlers': {
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
         'django_console': {'class': 'logging.StreamHandler', 'formatter': 'verbose', 'filters': ['skip_not_found']},
-        'audit_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': str(AUDIT_LOG_FILE), 'formatter': 'audit_format'},
+        'payments_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': str(PAYMENTS_LOG_FILE), 'formatter': 'audit_format'},
+        'cleanups_file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': str(CLEANUPS_LOG_FILE), 'formatter': 'audit_format'},
     },
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {
         'django': {'handlers': ['django_console'], 'level': 'INFO', 'propagate': False},
         'httpx': {'handlers': ['console'], 'level': 'WARNING'},
-        'payment_audit': {'handlers': ['audit_file', 'console'], 'level': 'INFO', 'propagate': False},
+        'payment_audit': {'handlers': ['payments_file'], 'level': 'INFO', 'propagate': False},
+        'cleanup_audit': {'handlers': ['cleanups_file'], 'level': 'INFO', 'propagate': False},
     },
 }
 
@@ -145,7 +154,13 @@ DATABASES = {
         'OPTIONS': {
             'timeout': 20,
             'transaction_mode': 'IMMEDIATE',
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+            'init_command': (
+                f'PRAGMA journal_mode=WAL;'
+                f'PRAGMA synchronous=NORMAL;'
+                f'PRAGMA cache_size=-20000;'
+                f'PRAGMA foreign_keys=ON;'
+                f'PRAGMA temp_store=FILE;'
+            ),
         }
     }
 }

@@ -1,9 +1,12 @@
-from decimal import Decimal
 from typing import final
 
 
 class FragmentAPIError(Exception):
     """Базовая ошибка клиента Fragment API."""
+
+
+class FragmentAPINetworkError(FragmentAPIError):
+    """Ошибка сети, когда запрос точно НЕ был отправлен."""
 
 
 @final

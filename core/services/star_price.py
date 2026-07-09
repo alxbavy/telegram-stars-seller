@@ -1,8 +1,11 @@
+from typing import final
 from decimal import Decimal
+
 from core.domain import star_logic
 from core.repositories.payment import PaymentRepository
 
 
+@final
 class StarService:
     def __init__(self, payment_repo: PaymentRepository):
         self._payment_repo = payment_repo

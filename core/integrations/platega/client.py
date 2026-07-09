@@ -1,39 +1,46 @@
-from collections.abc import Mapping
-from decimal import Decimal
-from uuid import UUID
-
 import httpx
 import re
 import logging
+from decimal import Decimal
+from uuid import UUID, uuid4
 from urllib.parse import urljoin
 from typing import cast, final
+from collections.abc import Mapping
 
 from django.conf import settings
 
+from core.domain.network_utils import SAFE_TO_RETRY
 from core.dto.payment import PaymentDTO
-from core.integrations.platega.schemas import PaymentRequestJson, PlategaAPIError, TransactionCreationResponse
+from core.integrations.platega.errors import PlategaAPIError, PlategaAPINetworkError
+from core.integrations.platega.schemas import PaymentRequestJSON, PaymentRequestMetadataJSON, TransactionCreationResponse
+from core.integrations.utils import create_new_timeout_conf_or_use_default
 
 
 logger = logging.getLogger(__name__)
+
+
+TIMEOUT = httpx.Timeout(timeout=15.0, connect=10.0)
+LIMITS = httpx.Limits(max_keepalive_connections=10, keepalive_expiry=15.0)
+
+
+PLATEGA_WEBHOOK = "platega_webhook"
 
 
 @final
 class PlategaClient:
     PAYMENT_WITH_METHOD_PATH = "transaction/process"
 
-    def __init__(self) -> None:
-        self.url = cast(str, getattr(settings, "PLATEGA_API_URL", None))
-        self.merchant_id = cast(str, getattr(settings, "PLATEGA_MERCHANT_ID", None))
-        self.secret = cast(str, getattr(settings, "PLATEGA_SECRET", None))
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self.url = cast(str, getattr(settings, "PLATEGA_API_URL", None))  # noqa
+        self.merchant_id = cast(str, getattr(settings, "PLATEGA_MERCHANT_ID", None))  # noqa
+        self.secret = cast(str, getattr(settings, "PLATEGA_SECRET", None))  # noqa
+        self.debug = cast(bool, getattr(settings, "DEBUG_PLATEGA", False))  # noqa
 
         if not all([self.url, self.merchant_id, self.secret]):
             logger.error("PlategaClient не сконфигурирован.")
             raise ValueError("PlategaClient is not configured properly")
 
-        self._client = httpx.AsyncClient(timeout=30.0)
-
-    async def aclose(self) -> None:
-        await self._client.aclose()
+        self._client = client
 
     async def create_payment(
             self,
@@ -41,27 +48,32 @@ class PlategaClient:
             amount: float,
             currency: str,
             description: str,
-            payload: str
+            telegram_id: str,
+            username: str,
+            payload: str,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
     ) -> PaymentDTO:
-        # Заглушка для тестов
-        # import uuid
-        # return PaymentDTO(
-        #     transaction_id=uuid.uuid4(),
-        #     pay_url="https://test.link",
-        #     price=Decimal(amount),
-        #     expires_in="00:30:00"
-        # )
+        if self.debug:
+            return PaymentDTO(
+                transaction_id=uuid4(),
+                pay_url="https://test.link",
+                price=Decimal(amount),
+                expires_in="00:30:00"
+            )
 
         if not payload:
             logger.exception("payload пуст при создании транзакции в платеге")
             raise PlategaAPIError("payload пуст при создании транзакции в платеге")
 
-        description_pattern = re.compile(r"^TgId:\d+\nUserId:\d+$")
-        if not description_pattern.search(description):
-            raise ValueError("Platega payment description is invalid")
-
         method = "POST"
-        data: PaymentRequestJson = {
+
+        metadata: PaymentRequestMetadataJSON = {
+            "userId": str(telegram_id),
+            "userName": str(username),
+        }
+        data: PaymentRequestJSON = {
             "paymentMethod": payment_method,
             "paymentDetails": {
                 "amount": amount,
@@ -69,25 +81,44 @@ class PlategaClient:
             },
             "description": description,
             "payload": payload,
+            "metadata": metadata
         }
 
-        response = await self._make_request(method, self.PAYMENT_WITH_METHOD_PATH, data)
+        response = await self._make_request(
+            method,
+            self.PAYMENT_WITH_METHOD_PATH,
+            data,
+            timeout=timeout, connect=connect
+        )
 
         if response.status_code == 200:
             response_data = cast(TransactionCreationResponse, response.json())
 
-            if isinstance(response_data["paymentDetails"], dict):
-                price = str(response_data["paymentDetails"]["amount"])
+            payment_details = response_data["paymentDetails"]
+            if payment_details is None:
+                price = amount
+
+            elif isinstance(payment_details, dict):
+                payment_amount = payment_details["amount"]
+                if payment_amount is None:
+                    price = amount
+                else:
+                    price = str(payment_amount)
+
             else:
                 price_pattern = re.compile(r"^(\S+)")
-                price = price_pattern.match(response_data["paymentDetails"]).group()
+                price = price_pattern.match(payment_details).group()
 
-            # TODO: ещё надо вернуть response.json и сохранить в транзакции для дебага
+            default_expires_in = "00:30:00"
+            expires_in = response_data.get("expiresIn", default_expires_in)
+            if expires_in is None:
+                expires_in = default_expires_in
+
             return PaymentDTO(
                 transaction_id=UUID(response_data["transactionId"]),
                 pay_url=response_data["redirect"],
                 price=Decimal(price),
-                expires_in=response_data.get("expiresIn")
+                expires_in=expires_in
             )
 
         if response.status_code == 400:
@@ -101,15 +132,34 @@ class PlategaClient:
         logger.exception("Неизвестная ошибка во время создания платежа на Platega")
         raise PlategaAPIError(f"Неизвестная ошибка во время создания платежа:\n{data = }\n{response = }")
 
-    async def _make_request(self, method: str, path: str, data: Mapping[str, object] | None = None) -> httpx.Response:
+    async def _make_request(
+            self,
+            method: str,
+            path: str,
+            data: Mapping[str, object] | None = None,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> httpx.Response:
         headers = self._get_headers(method)
         full_url = urljoin(self.url, path)
+        timeout_conf = create_new_timeout_conf_or_use_default(timeout, connect, TIMEOUT)
 
         try:
             if method == "POST":
-                response = await self._client.post(full_url, json=data, headers=headers, timeout=30.0)
+                response = await self._client.post(
+                    full_url,
+                    json=data, headers=headers,
+                    timeout=timeout_conf
+                )
+
             else:
-                response = await self._client.get(full_url, headers=headers, timeout=30.0)
+                response = await self._client.get(full_url, headers=headers, timeout=timeout_conf)
+
+        except (*SAFE_TO_RETRY, ) as exc:
+            err_msg = "Произошла ошибка соединения при обращении к Platega"
+            logger.exception(err_msg)
+            raise PlategaAPINetworkError(err_msg) from exc
 
         except httpx.TimeoutException as exc:
             logger.exception(f"Превышено время ожидания при попытке создать платёж на Platega")

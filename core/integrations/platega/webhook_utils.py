@@ -1,201 +1,448 @@
-import json
+from __future__ import annotations
+
+import random
 import logging
-from typing import cast
 from uuid import UUID
+from decimal import Decimal
+from typing import cast
+from collections.abc import Awaitable
 
+from celery import Task
+
+from telegram import InputMediaPhoto, Message
 from telegram.ext import ExtBot
+from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
-from django.conf import settings
-from django.utils.crypto import constant_time_compare
-from django.http import HttpRequest
+from bot.keyboards.error import build_support_kb
+from bot.keyboards.order import build_order_confirmed_kb
+from bot.renderers.base import create_media_source
+from bot.renderers.order import get_order_created_text
 
-from bot.keyboards.error import build_error_kb
-
-from core.domain.enums import TransactionStatus
-from core.integrations.platega.schemas import PlategaHeaders, PlategaWebhookRequestJson, PaymentPayloadDict
-from core.services.support import SupportService
+from core.domain.enums import PROCESSING_STATUSES, TransactionStatus, get_translation
+from core.domain.network_utils import SAFE_TO_RETRY, RetriesEntity, get_timeout_error_or_none
+from core.integrations.fragment.enums import FragmentStatus
+from core.integrations.fragment.errors import FragmentAPINetworkError, FragmentAPITemporaryError, FragmentAPITooManyRequests
+from core.integrations.fragment.schemas import SendStarsResponse
+from core.integrations.platega.schemas import PaymentPayloadDict
+from core.repositories.utils import safe_db_action_async_with_retries_celery
 from core.services.payment import PaymentService
-from core.business_logic_container import container
-from core.models import Transaction
+from core.services.support import SupportService
+from core.services.transaction import TransactionService
+from core.ioc import get_container
+from core.models import TARGET_SELF, Transaction
 
 
 logger = logging.getLogger(__name__)
 
 
-def is_authenticated(headers: PlategaHeaders) -> bool:
-    merchant_id = headers.get("X-MerchantId")
-    secret_key = headers.get("X-Secret")
-
-    if merchant_id is None or secret_key is None:
-        return False
-    if (
-            not constant_time_compare(str(merchant_id), settings.PLATEGA_MERCHANT_ID) or
-            not constant_time_compare(str(secret_key), settings.PLATEGA_SECRET)
-    ):
-        return False
-
-    return True
-
-
-def status_code_or_access_granted(request: HttpRequest) -> int | bool:
-    if request.method != "POST":
-        return 405
-    if not is_authenticated(request.headers):
-        return 403
-
-    return True
-
-
-def parse_payload(data: PlategaWebhookRequestJson) -> PaymentPayloadDict | None:
-    parsed_payload = cast(object, json.loads(data["payload"]))
-    if not isinstance(parsed_payload, dict):
-        logger.exception("Request from Platega contains payload which is not a dict")
-        return None
-
-    if (
-            parsed_payload.get("user_id") is None or
-            parsed_payload.get("message_id") is None or
-            parsed_payload.get("price") is None or
-            parsed_payload.get("stars_count") is None or
-            parsed_payload.get("target_username") is None
-    ):
-        logger.exception("Payload from Platega is invalid")
-        return None
-
-    return cast(PaymentPayloadDict, cast(object, parsed_payload))
-
-
-def parse_request(request: HttpRequest) -> tuple[PlategaWebhookRequestJson, PaymentPayloadDict | None]:
-    data = cast(PlategaWebhookRequestJson, json.loads(request.body))
-    parsed_payload = parse_payload(data)
-    return data, parsed_payload
-
-
-async def get_support_url() -> str:
-    async with container() as request_container:
+async def unsafe_get_support_url() -> str:
+    async with get_container()() as request_container:
         support_service = await request_container.get(SupportService)
         return await support_service.get_support_url()
 
 
-async def safe_remove_reply_markup_for_order_message(bot: ExtBot[None], user_id: int, message_id: int) -> None:
-    try:
-        _ = await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=None)
-    except Exception as err:
-        log_msg = (
-            f"Error while trying to remove reply_markup for order message: {user_id = }, {message_id = }\n{err = }"
+async def unsafe_get_transaction(
+        transaction_id: UUID,
+        is_select_user: bool = True,
+        is_select_metadata: bool = True
+) -> Transaction | None:
+    async with get_container()() as request_container:
+        trans_service = await request_container.get(TransactionService)
+        return await trans_service.get_transaction(transaction_id, is_select_user, is_select_metadata)
+
+
+async def safe_create_transaction_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction_id: UUID,
+        status: TransactionStatus, parsed_payload: PaymentPayloadDict, payment_method: str
+) -> Transaction | None:
+    async with get_container()() as request_container:
+        trans_service = await request_container.get(TransactionService)
+
+        transaction = await safe_db_action_async_with_retries_celery(
+            trans_service.create_transaction(
+                transaction_id,
+                parsed_payload, payment_method,
+                status, payload={"autogenerated": (
+                    "Это автоматически сгенерированная транзакция из вебхука, "
+                    "так как исходная транзакция была удалена"
+                )}
+            ),
+            celery_task, started_at, celery_kwargs, timeout,
+            str(transaction_id)
         )
-        logger.exception(log_msg)
+
+        return transaction
 
 
-async def safe_delete_order_message(bot: ExtBot[None], user_id: int, message_id: int) -> None:
-    try:
-        _ = await bot.delete_message(chat_id=user_id, message_id=message_id)
-    except Exception as err:
-        log_msg = (
-            f"Error while trying to delete order message: {user_id = }, {message_id = }\n{err = }"
+async def safe_get_support_url_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction_id: str
+) -> str:
+    support_url = await safe_db_action_async_with_retries_celery(
+        unsafe_get_support_url(),
+        celery_task, started_at, celery_kwargs, timeout,
+        transaction_id
+    )
+
+    if support_url is None:
+        support_url = "https://t.me/pmlame"  # fallback
+
+    return support_url
+
+
+async def safe_get_transaction_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction_id: UUID,
+        *,
+        is_select_user: bool = True,
+        is_select_metadata: bool = True
+) -> Transaction | None:
+    """
+    Рано или поздно получит транзакцию. Если не получится её найти, или произойдёт тайм-аут, то вернётся `None`
+    """
+    return await safe_db_action_async_with_retries_celery(
+        unsafe_get_transaction(transaction_id, is_select_user, is_select_metadata),
+        celery_task, started_at, celery_kwargs, timeout,
+        str(transaction_id)
+    )
+
+
+async def safe_set_status_for_transaction_obj_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction: Transaction, new_status: TransactionStatus
+) -> tuple[bool, Transaction]:
+    """
+    - Если предыдущий статус уже был `new_status`, вернётся `(False, transaction)`
+
+    - В случае тайм-аута будет автоматический перезапуск таски
+
+    - Если был тайм-аут при попытке обновить статус в БД, вернётся `(False, transaction)`
+
+    - В случае успеха возвращается `(True, updated_transaction)`
+    """
+
+    if transaction.status == new_status:
+        return False, transaction
+
+    async with get_container()() as request_container:
+        trans_service = await request_container.get(TransactionService)
+
+        updated_transaction = await safe_db_action_async_with_retries_celery(
+            trans_service.update_by_obj(transaction, new_status=new_status, is_count_metadata=False),
+            celery_task, started_at, celery_kwargs, timeout,
+            str(transaction.id)
         )
-        logger.exception(log_msg)
+
+        if updated_transaction is None:
+            return False, transaction
+
+        return updated_transaction
 
 
-async def safe_process_transaction(
-        data: PlategaWebhookRequestJson, parsed_payload: PaymentPayloadDict | None
-) -> str | Transaction | TransactionStatus | None:
+async def safe_set_status_for_transaction_id_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction_id: UUID, new_status: TransactionStatus
+) -> bool:
+    async with get_container()() as request_container:
+        trans_service = await request_container.get(TransactionService)
+
+        is_changed = await safe_db_action_async_with_retries_celery(
+            trans_service.update_by_id(transaction_id, new_status=new_status, is_count_metadata=False),
+            celery_task, started_at, celery_kwargs, timeout,
+            str(transaction_id)
+        )
+
+        return False if is_changed is None else is_changed
+
+
+async def safe_update_transaction_payload_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction: Transaction, new_payload: dict[str, object]
+) -> tuple[bool, Transaction] | None:
+    async with get_container()() as request_container:
+        trans_service = await request_container.get(TransactionService)
+
+        return await safe_db_action_async_with_retries_celery(
+            trans_service.update_by_obj(transaction, new_payload=new_payload, is_count_transaction=False),
+            celery_task, started_at, celery_kwargs, timeout,
+            str(transaction.id)
+        )
+
+
+async def safe_create_fragment_transaction_if_not_sent_with_retries[**P,R](
+        celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
+        transaction: Transaction
+) -> tuple[SendStarsResponse | None, str]:
     """
-    - Если error_msg не None, значит произошла ошибка, тогда второй объект будет None.
+    При ошибке возвращает текст ошибки вторым аргументом.
 
-    - Перед обработкой будет попытка получить транзакцию - если не получится, будет возвращена ошибка и None.
+    Если полученный статус финальный, то первым аргументом будет соответствующий `TransactionStatus`, иначе `None`.
 
-    - Если транзакция была получена, и она уже SUCCESS, тогда будет возвращено None и None.
-
-    - Далее, если при обработке транзакции ошибки не было, то второй объект будет либо транзакцией, либо
-    итоговым статусом на случай проблем с БД.
+    Если первый аргумент `TransactionStatus.FAILED`, то вторым аргументом всегда будет текст ошибки.
     """
 
     try:
-        transaction_uuid = UUID(data.get("id"))
-    except Exception as uuid_err:
-        logger.exception("Couldn't convert transaction id to UUID")
-        return f"{uuid_err.__class__.__name__}: {uuid_err}"
-
-    try:
-        async with container() as request_container:
+        async with get_container()() as request_container:
             payment_service = await request_container.get(PaymentService)
 
-            transaction = await payment_service.get_transaction_by_uuid(
-                transaction_uuid,
-                data, parsed_payload
+            timeout_err = get_timeout_error_or_none(
+                RetriesEntity.NETWORK_TIME, started_at, timeout,
+                f"{payment_service.create_fragment_transaction.__qualname__}"
             )
-            if transaction is None:
-                return f"Couldn't get or create transaction {transaction_uuid}"
+            if timeout_err is not None:
+                return None, str(timeout_err)
 
-            if transaction.status == TransactionStatus.SUCCESS:
-                return None
+            try:
+                response_or_transaction: SendStarsResponse | Transaction = await payment_service.create_fragment_transaction(
+                    transaction,
+                    timeout=45.0,
+                    recreate=False
+                )
 
-            if data["status"] != "CONFIRMED":
-                transaction = await payment_service.cancel_transaction(transaction, data)
+            except FragmentAPINetworkError as exc:
+                raise celery_task.retry(
+                    exc=exc,
+                    countdown=5.0 + random.uniform(0.0, 3.0),
+                    kwargs=celery_kwargs
+                )
+
+            except FragmentAPITooManyRequests as exc:
+                retry_after = exc.retry_after
+                if retry_after is None:
+                    retry_after = 60.0
+
+                raise celery_task.retry(
+                    exc=exc,
+                    countdown=float(retry_after) + random.uniform(0.0, 1.0),
+                    kwargs=celery_kwargs
+                )
+
+            except FragmentAPITemporaryError as exc:
+                raise celery_task.retry(
+                    exc=exc,
+                    countdown=60.0 + random.uniform(0.0, 10.0),
+                    kwargs=celery_kwargs
+                )
+
+            except Exception as exc:
+                return None, str(exc)
+
+            if isinstance(response_or_transaction, Transaction):
+                err_msg = f"Попытка отправки звёзд по транзакции {response_or_transaction.id} уже была"
+                logger.warning(err_msg)
+                return None, err_msg
+
+            status = cast(FragmentStatus, response_or_transaction["status"])
+
+            if status in (
+                    FragmentStatus.CREATED, FragmentStatus.PENDING,
+                    FragmentStatus.COMPLETED, FragmentStatus.BLOCKCHAIN_SENT
+            ):
+                err_msg = ""
+
+            elif status == FragmentStatus.FAILED:
+                err_msg = (
+                    f"При попытке отправить звёзды fragment-api вернул статус FAILED, текст ошибки: {response_or_transaction['error']}"
+                )
+
             else:
-                transaction = await payment_service.confirm_payment(transaction)
+                err_msg = "fragment-api вернул неизвестный статус"
 
-            return transaction
+            return response_or_transaction, err_msg
 
-    except Exception as transaction_err:
-        logger.exception(f"Error during transaction processing:\n{transaction_err = }")
-        return f"{transaction_err.__class__.__name__}: {transaction_err}"
+    except Exception as err:
+        logger.exception(f"Error trying send stars:\n{err = }")
+        return None, f"{err.__class__.__name__}: {err}"
 
 
-async def safe_notify_user(
-        bot: ExtBot[None], parse_mode: str,
-        transaction: Transaction | TransactionStatus, transaction_id: str,
-        user_id: int, support_url: str
-) -> None:
-    if isinstance(transaction, Transaction) and transaction.status == TransactionStatus.SUCCESS:
-            text = (
-                f"😊 <b>Заказ успешно доставлен!</b>\n\n"
-                f"Пополнили — ⭐ {transaction.amount_stars} звёзд\n"
-                f'{"Для кого — @" + transaction.target_username + "\n" if transaction.target_username != "Себе" else ""}\n'
-                f"Спасибо за покупку! ❤️\n\n"
-                f"✨ <b>Сделать ещё заказ — /start</b>"
-            )
-            reply_markup = None
+async def safe_telegram_action_with_retries[**P,TR,CR](
+        celery_task: Task[P,TR],
+        started_at: float,
+        coro: Awaitable[CR],
+        timeout: float | None = None,
+        retries: int = -1,
+        max_retries: int | None = None
+) -> CR | BadRequest | str:
+    """
+    Если используется `max_retries`, то в параметрах исходной `celery_task` должен быть параметр `retries: int` (он
+    начинается с 0).
+    """
 
-    elif isinstance(transaction, TransactionStatus) and transaction == TransactionStatus.SUCCESS:
-        text = (
-            f"🤕 <b>При обработке заказа возникли трудности...</b>\n\n"
-            f"Однако! Звёзды должны быть отправлены 🙏\n"
-            f"Если ничего не придёт в течение 5 минут, обратись в тех. поддержку. Извини за неудобства! ❤️\n\n"
-            f"✨ <b>Сделать ещё заказ — /start</b>"
-        )
-        reply_markup = build_error_kb(support_url)
+    if timeout is None:
+        timeout = 900.0
 
-    elif (
-            isinstance(transaction, Transaction) and transaction.status == TransactionStatus.CANCELLED
-            or transaction == TransactionStatus.CANCELLED
-    ):
-        text = (
-            f"⚠️ <b>Твоему заказу был присвоен статус {TransactionStatus.CANCELLED.translation}</b>\n\n"
-            f"Если ты решил не делать заказ, то можешь проигнорировать это сообщение\n\n"
-            f"В ином случае обратись в тех. поддержку с ID заказа\n"
-            f"🆔 ID заказа: <code>{transaction_id}</code>"
-        )
-        reply_markup = build_error_kb(support_url)
+    timeout_err = get_timeout_error_or_none(
+        RetriesEntity.NETWORK_TIME, started_at, timeout,
+        f"{coro.__qualname__}"
+    )
+    if timeout_err is not None:
+        return str(timeout_err)
 
-    else:
-        text = (
-            f"❌ <b>Произошла ошибка при переводе звёзд!</b>\n\n"
-            f"Обратись в тех. поддержку с ID заказа и текстом ошибки\n\n"
-            f"🆔 ID заказа: <code>{transaction_id}</code>\n"
-        )
-        if isinstance(transaction, Transaction):
-            text += f"Текст ошибки:\n<pre>{json.dumps(transaction.metadata_info.payload, indent=2, ensure_ascii=False)}</pre>"
+    retry_kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
+    retry_kwargs["started_at"] = started_at
+
+    if max_retries is not None:
+        if retries >= 0:
+            try:
+                if retries >= max_retries:
+                    err_msg = f"Превышено количество попыток ({max_retries}) для {coro.__qualname__}"
+                    logger.exception(err_msg)
+                    return err_msg
+            except Exception as err:
+                logger.exception(err)
+
         else:
-            text += "Текст ошибки:\n<pre>Произошла ошибка БД, поэтому полный текст ошибки доступен в логах</pre>"
-        reply_markup = build_error_kb(support_url)
+            logger.exception(f"retries must be >= 0, now {retries}")
 
     try:
-        _ = await bot.send_message(
-            chat_id=user_id,
-            text=text,
-            reply_markup=reply_markup, parse_mode=parse_mode
+        return await coro
+
+    except BadRequest as err:
+        logger.debug(f"BadRequest when trying {coro.__qualname__}:\n{err = }")
+        return err
+
+    except RetryAfter as err:
+        time_to_sleep = err.retry_after if isinstance(err.retry_after, int) else err.retry_after.total_seconds()
+        raise celery_task.retry(
+            exc=err,
+            countdown=time_to_sleep + 1,
+            kwargs=retry_kwargs
         )
+
+    except (TimedOut, NetworkError, *SAFE_TO_RETRY) as err:
+        min_countdown: float = 10.0
+        max_countdown: float = 60.0
+        jitter: float = 5.0
+
+        if max_retries is not None and retries >= 0:
+            _ = retry_kwargs.setdefault("retries", retries + 1)
+        else:
+            retries = celery_task.request.retries
+
+        base_delay = min_countdown * (2.0 ** retries)
+        base_delay = min(base_delay, max_countdown)
+        jitter = random.uniform(0.0, jitter)
+        countdown = base_delay + jitter
+
+        if isinstance(err, TimedOut):
+            err_msg = f"TimedOut while trying to await {coro.__qualname__}: retry after {countdown}s. Err: {err}"
+        else:
+            err_msg = f"NetworkError while trying to await {coro.__qualname__}: retry after {countdown}s. Err: {err}"
+        logger.exception(err_msg)
+
+        raise celery_task.retry(
+            exc=err,
+            countdown=countdown,
+            kwargs=retry_kwargs
+        )
+
     except Exception as err:
-        logger.exception(f"Error while sending message in bot:\n{err = }")
+        err_msg = f"Error while trying to await {coro.__qualname__}:\n{err = }"
+        logger.exception(err_msg)
+        return err_msg
+
+
+async def safe_notify_user_about_status_with_retries[**P, R](
+        celery_task: Task[P,R], started_at: float,
+        bot: ExtBot[None], parse_mode: str,
+        user_id: int, message_id: int,
+        status: str, transaction_id: str,
+        amount_stars: int, price: str,
+        target_username: str,
+        pay_url: str, is_gift: bool | None = None,
+        promo_name: str = "", promo_discount: Decimal | None = None,
+        *,
+        timeout: float
+) -> Message | bool | BadRequest | str:
+    kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
+
+    if status == TransactionStatus.SUCCESS:
+        text = (
+            f"😊 <b>Заказ успешно доставлен!</b>\n\n"
+            f"Пополнили — ⭐ {amount_stars} звёзд\n"
+            f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
+            f"🆔 ID заказа — <code>{transaction_id}</code>\n\n"
+            f"Спасибо за покупку! ❤️\n"
+            f"✨ <b>Сделать ещё заказ — /start</b>"
+        )
+        reply_markup = None
+        photo = "delivery_success.jpg"
+
+    elif status == TransactionStatus.PENDING:
+        text = get_order_created_text(
+            transaction_id,
+            amount_stars, Decimal(price),
+            target_username,
+            promo_name=promo_name, promo_discount=promo_discount
+        )
+        reply_markup = build_order_confirmed_kb(pay_url)
+        photo = "order_confirmed_gift.jpg" if is_gift else "order_confirmed_self.jpg"
+
+    else:
+        support_url = await safe_get_support_url_with_retries(
+            celery_task, started_at, kwargs, 30.0, transaction_id
+        )
+
+        if status in PROCESSING_STATUSES:
+            text = (
+                f"😊 <b>Заказ обрабатывается...</b>\n\n"
+                f"Пополняем — ⭐{amount_stars}\n"
+                f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
+                f"🆔 ID заказа — <code>{transaction_id}</code>\n\n"
+                f"Обработка может занять до 15 минут. Если ничего не придёт, обратись в тех. поддержку"
+            )
+            reply_markup = build_support_kb(support_url)
+            photo = "delivery_in_process.jpg"
+
+        elif status == TransactionStatus.IN_DOUBT:
+            text = (
+                f"🔍 <b>Проверь чат Telegram</b>\n\n"
+                f"Бот отправил звёзды, но не смог проверить, дошли ли они. "
+                f"Если в течение 5 минут ничего не придёт, обратись в тех. поддержку\n\n"
+                f"Пополняем — ⭐{amount_stars}\n"
+                f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
+                f"🆔 ID заказа — <code>{transaction_id}</code>"
+            )
+            reply_markup = build_support_kb(support_url)
+            photo = "delivery_in_process.jpg"
+
+        elif status == TransactionStatus.FAILED:
+            text = (
+                f"❌ <b>Произошла ошибка при переводе звёзд!</b>\n\n"
+                f"Обратись в тех. поддержку с ID заказа\n\n"
+                f"🆔 ID заказа: <code>{transaction_id}</code>\n"
+            )
+            reply_markup = build_support_kb(support_url)
+            photo = "delivery_failed.jpg"
+
+        elif status == TransactionStatus.CANCELLED:
+            text = (
+                f"⌛ <b>Время на оплату истекло</b>\n\n"
+                f"❌ Платёж отменён\n"
+                f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
+                f"Можешь начать новый заказ с помощью /start"
+            )
+            reply_markup = build_support_kb(support_url)
+            photo = "delivery_canceled.jpg"
+
+        else:
+            text = (
+                f"⚠️ <b>Твоему заказу был присвоен статус {get_translation(status) if status else 'НЕИЗВЕСТНО'}</b>\n\n"
+                f"🆔 ID заказа: <code>{transaction_id}</code>"
+            )
+            reply_markup = build_support_kb(support_url)
+            photo = "delivery_unknown.jpg"
+
+    async with bot:
+        with create_media_source(photo) as media:
+            return await safe_telegram_action_with_retries(
+                celery_task, started_at,
+                bot.edit_message_media(
+                    media=InputMediaPhoto(media=media, caption=text, parse_mode=parse_mode),
+                    chat_id=user_id,
+                    message_id=message_id,
+                    reply_markup=reply_markup
+                ),
+                timeout=timeout
+            )

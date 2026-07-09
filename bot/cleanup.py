@@ -4,12 +4,17 @@ from uuid import UUID
 from telegram.ext import ContextTypes
 
 from bot.utils.injector import inject_without_update
-from core.services.payment import PaymentService
+
+from core.services.transaction import TransactionService
+
+
+# Все методы здесь устаревшие и пока не предполагается их использовать. Очистка делегирована в Celery, и только
+# для транзакций со статусом CANCELLED
 
 
 @inject_without_update
-async def _clear_expired_transactions_helper(context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService) -> None:
-    await payment_service.delete_expired_transactions()
+async def _clear_expired_transactions_helper(context: ContextTypes.DEFAULT_TYPE, trans_service: TransactionService) -> None:
+    await trans_service.delete_expired_transactions()
 
 
 async def clear_expired_transactions(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -17,18 +22,16 @@ async def clear_expired_transactions(context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 @inject_without_update
-async def _clear_specific_transaction_helper(context: ContextTypes.DEFAULT_TYPE, payment_service: PaymentService) -> None:
+async def _clear_specific_transaction_helper(context: ContextTypes.DEFAULT_TYPE, trans_service: TransactionService) -> None:
     """Смотрите документацию для `clear_specific_transaction` для подробностей."""
     transaction_id, expires_in = cast(tuple[UUID, str], context.job.data)
     if not isinstance(transaction_id, UUID):
         raise ValueError("transaction_id must be UUID")
     if not isinstance(expires_in, str):
         raise ValueError("expires_in must be str with format HH:MM:SS")
-    await payment_service.delete_transactions_expires_in(expires_in, transaction_id)
+    await trans_service.delete_transactions_expires_in(expires_in, transaction_id)
 
 
-# Deprecated:
-# Подробности в PaymentService.delete_transactions_expires_in
 async def clear_specific_transaction(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Это `callback`, который должен передаваться в `Job` при создании его с помощью `job_queue`.

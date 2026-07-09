@@ -17,9 +17,9 @@ class PaymentMethodDTO:
 @dataclass
 class PaymentDTO:
     transaction_id: UUID
-    pay_url: str
+    pay_url: str | None
     price: Decimal
-    expires_in: str | None
+    expires_in: str
 
 
 class PricingDTO(NamedTuple):

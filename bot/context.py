@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field, asdict
+from decimal import Decimal
+from typing import Annotated
 
 from dacite import from_dict
 
@@ -17,6 +19,9 @@ class OrderDraft:
     recipient_mode: RecipientMode | None = None
     target_username: str = ""
     payment_method: str | None = None
+    payment_external_id: str | None = None
+    payment_api: str | None = None
+    price: Annotated[str, Decimal] | None = None
     checkout_transaction_id: str | None = None
     checkout_url: str | None = None
 

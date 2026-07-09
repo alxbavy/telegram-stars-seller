@@ -1,22 +1,26 @@
+import asyncio
+
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from bot.handlers.back import handle_back_button
-from bot.handlers.debug import balance_handler, prices_handler
-from bot.handlers.profile import handle_profile_menu, handle_history_pagination
+from bot.handlers.debug import balance_handler, balance_handler_debug, prices_handler, prices_handler_debug
 from bot.handlers.main import handle_main_menu
 from bot.handlers.order import (
-    handle_fixed_quantity, handle_custom_quantity_btn, handle_custom_quantity_input,
+    handle_fixed_quantity, handle_custom_quantity_btn, handle_custom_quantity_input, handle_order_confirmed,
     handle_recipient_mode, handle_gift_username,
     handle_payment_method,
 )
+from bot.handlers.profile import handle_profile_menu, handle_history_pagination
+from bot.handlers.promo_code import handle_enter_promo, handle_promo_input_request, handle_promo_code_cancel
 from bot.handlers.start import start_handler, repeat_order_callback
 from bot.callbacks import (
-    RepeatOrderCallback, MainMenuCallback,
+    CancelPromoCodeCallback, RepeatOrderCallback, MainMenuCallback,
     ProfileMenuCallback, HistoryPageCallback,
     FixedQuantityCallback, CustomQuantityCallback,
     RecipientModeCallback,
-    PaymentMethodCallback,
+    PaymentMethodCallback, PromoCodeCallback,
+    OrderConfirmedCallback,
     BackCallback,
 )
 from bot.states import BotConversationState
@@ -24,9 +28,10 @@ from bot.states import BotConversationState
 
 async def _bot_is_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if cb_query := update.callback_query:
-        _ = await cb_query.answer("Бот занят, подождите немного...", show_alert=True)
-    elif msg := update.message:
-        _ = await msg.delete()  # update.message должен содержать команду /start
+        _ = await cb_query.answer("Бот занят, подожди немного...", show_alert=True)
+    else:
+        _ = await context.bot.send_message(chat_id=update.effective_chat.id, text="Бот занят, подожди немного...")
+        await asyncio.sleep(3)
 
 
 def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]:
@@ -62,20 +67,26 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_gift_username)
             ],
             BotConversationState.CHOOSE_PAYMENT_SELF: [
-                CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback)
+                CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback),
+                CallbackQueryHandler(handle_promo_input_request, pattern=PromoCodeCallback)
             ],
             BotConversationState.CHOOSE_PAYMENT_GIFT: [
-                CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback)
+                CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback),
+                CallbackQueryHandler(handle_promo_input_request, pattern=PromoCodeCallback)
             ],
-            # Состояния подтверждения ждут перехода по URL, бот здесь просто висит
+            BotConversationState.ENTER_PROMO: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_enter_promo),
+                CallbackQueryHandler(handle_promo_code_cancel, pattern=CancelPromoCodeCallback)
+            ],
             BotConversationState.ORDER_CONFIRMATION_SELF: [
-                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+                CallbackQueryHandler(handle_order_confirmed, pattern=OrderConfirmedCallback)
             ],
             BotConversationState.ORDER_CONFIRMATION_GIFT: [
-                CallbackQueryHandler(repeat_order_callback, pattern="repeat_order")
+                CallbackQueryHandler(handle_order_confirmed, pattern=OrderConfirmedCallback)
             ],
+            BotConversationState.ORDER_CONFIRMED: [],  # В этом состоянии есть только переход по URL
             ConversationHandler.WAITING: [  # Временное состояние для асинхронной работы, вход и выход из него контролировать не надо
-                CommandHandler("start", _bot_is_busy),
+                MessageHandler(filters.TEXT, _bot_is_busy),
                 CallbackQueryHandler(_bot_is_busy)
             ],
         },
@@ -91,5 +102,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
 def get_debug_handlers() -> tuple[CommandHandler[ContextTypes.DEFAULT_TYPE, None], ...]:
     return (
         CommandHandler("balance", balance_handler),
+        CommandHandler("balance_debug", balance_handler_debug),
         CommandHandler("prices", prices_handler),
+        CommandHandler("prices_debug", prices_handler_debug),
     )

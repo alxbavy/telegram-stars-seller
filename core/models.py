@@ -6,6 +6,7 @@ from django.db import models
 from solo.models import SingletonModel
 
 from core.domain.enums import TransactionStatus, TransactionType
+from core.integrations.fragment.enums import FragmentStatus
 
 
 TARGET_SELF = "Себе"
@@ -18,6 +19,35 @@ class SaveKwargs(TypedDict, total=False):
     update_fields: Iterable[str] | None
 
 
+class PromoCode(models.Model):
+    objects = models.Manager()
+    if TYPE_CHECKING:
+        telegram_users: models.manager.RelatedManager["TelegramUser"]
+        id: int
+
+    name = models.CharField(max_length=50, verbose_name="Промокод", help_text="Только название; регистр учитывается")
+    discount = models.DecimalField(
+        default=Decimal("0.00"),
+        decimal_places=2,
+        max_digits=5,
+        verbose_name="Скидка %",
+        help_text="Указывается в %, например, 5.00 (не 0.05)"
+    )
+    usage_account = models.BigIntegerField(null=True, blank=True, verbose_name="На аккаунт", help_text="Если пусто - без ограничений")
+    usage_global = models.BigIntegerField(null=True, blank=True, verbose_name="Всего", help_text="Если пусто - без ограничений")
+    is_active = models.BooleanField(default=True, verbose_name="Активен?")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
+
+    @override
+    def __str__(self):
+        return f"{self.name} {self.discount}%"
+
+    class Meta:
+        verbose_name = "Промокод"
+        verbose_name_plural = "Промокоды"
+
+
 class TelegramUser(models.Model):
     objects = models.Manager()
     if TYPE_CHECKING:
@@ -25,6 +55,14 @@ class TelegramUser(models.Model):
 
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, blank=True, verbose_name="Username")
+    active_promo = models.ForeignKey(
+        PromoCode,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="telegram_users",
+        verbose_name="Актив. промокод"
+    )
+    promo_since = models.DateTimeField(null=True, blank=True, verbose_name="Дата активации промокода")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
@@ -51,6 +89,7 @@ class Transaction(models.Model):
     objects = models.Manager()
     if TYPE_CHECKING:
         metadata_info: "TransactionMetadata"
+        metadata_info_id: int
 
     id = models.UUIDField(primary_key=True, verbose_name="ID платежа", help_text="Это ID из внешнего API")
     telegram_user = models.ForeignKey(
@@ -59,10 +98,12 @@ class Transaction(models.Model):
         related_name="transactions",
         verbose_name="Покупатель"
     )
-    amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
+    amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Без скидки")
     amount_stars = models.IntegerField(verbose_name="Количество звезд")
     target_username = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
     status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
+    message_id = models.IntegerField(default=-1, blank=True, verbose_name="ID сообщения заказа", help_text="Нужно для вебхука")
+    pay_url = models.CharField(max_length=255, default="dummy.pay.link", verbose_name="URL оплаты", help_text="Приходит из платёжной системы")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     expires_at = models.DateTimeField(null=True, blank=True, verbose_name="Истекает")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
@@ -74,13 +115,6 @@ class Transaction(models.Model):
     class Meta:
         verbose_name = "Транзакция"
         verbose_name_plural = "Транзакции"
-
-        constraints = [
-            models.UniqueConstraint(
-                fields=["id", "telegram_user"],
-                name="unique_user_transaction_id"
-            )
-        ]
 
 
 class TransactionMetadata(models.Model):
@@ -94,6 +128,15 @@ class TransactionMetadata(models.Model):
     )
     type = models.CharField(max_length=50, choices=TransactionType.to_choices(), verbose_name="Тип")
     payment_method = models.CharField(max_length=50, verbose_name="Способ оплаты")
+    promo_id = models.BigIntegerField(null=True, blank=True, verbose_name="ID промокода")
+    promo_name = models.CharField(max_length=50, blank=True, verbose_name="Имя промокода")
+    promo_discount = models.DecimalField(
+        null=True, blank=True,
+        decimal_places=2,
+        max_digits=5,
+        verbose_name="Скидка промокода %",
+        help_text="Указывается в %, например, 5.00 (не 0.05)"
+    )
     payload: dict[str, object] = models.JSONField(default=dict, blank=True, verbose_name="Доп. данные (JSON)")
 
     @override
@@ -145,7 +188,7 @@ class PaymentMethod(models.Model):
         default=Decimal("0.00"),
         verbose_name="Комиссия (%)"
     )
-    is_active = models.BooleanField(default=False, verbose_name="Активна")
+    is_active = models.BooleanField(default=False, verbose_name="Активен?")
 
     @override
     def __str__(self):
@@ -161,6 +204,24 @@ class PaymentMethod(models.Model):
                 name="unique_api_method_name"
             )
         ]
+
+
+class FragmentTransaction(models.Model):
+    objects = models.Manager()
+
+    fragment_id = models.UUIDField(primary_key=True, verbose_name="ID Fragment")
+    id_from_payment_api = models.UUIDField(verbose_name="ID из платёжного API")
+    status = models.CharField(max_length=40, choices=FragmentStatus.to_choices(), default=FragmentStatus.CREATED, verbose_name="Статус FRAGMENT")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
+
+    @override
+    def __str__(self):
+        return f"Транзакция Fragment #{self.fragment_id} (платёжное ID {self.id_from_payment_api})"
+
+    class Meta:
+        verbose_name = "Транзакция Fragment"
+        verbose_name = "Транзакции Fragment"
 
 
 class GlobalSettings(SingletonModel):

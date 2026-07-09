@@ -1,21 +1,41 @@
 import asyncio
+import httpx
 import logging
 from decimal import Decimal
-from urllib.parse import urljoin
+from uuid import UUID, uuid4
+from urllib.parse import urljoin, urlencode
 from typing import final, cast
 from collections.abc import Mapping
 
-import httpx
+from django.urls import reverse
 
 from django.conf import settings
 
-from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITooManyRequests, FragmentAPITemporaryError
-from core.integrations.fragment.schemas import BalanceResponse, CurrentPricesResponse, HasCurrency, SendStarsResponse
+from core.domain.network_utils import SAFE_TO_RETRY
+from core.integrations.fragment.errors import (
+    FragmentAPIError,
+    FragmentAPINetworkError,
+    FragmentAPITooManyRequests,
+    FragmentAPITemporaryError
+)
+from core.integrations.fragment.schemas import (
+    BalanceForCurrencyJSON, BalanceResponse,
+    CurrentPricesResponse, HasCurrency,
+    SendStarsResponse, StarsJSON
+)
 from core.integrations.fragment.utils import parse_retry_after
-from core.models import FragmentAPI
+from core.integrations.utils import create_new_timeout_conf_or_use_default
+from core.services.fragment_transaction import FragmentTransactionService
 
 
 logger = logging.getLogger(__name__)
+
+
+TIMEOUT = httpx.Timeout(timeout=15.0, connect=10.0)
+LIMITS = httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=15.0)
+
+
+FRAGMENT_WEBHOOK = "fragment_webhook"
 
 
 @final
@@ -25,11 +45,14 @@ class FragmentClient:
     GET_USER_PATH = "misc/user/"
     SEND_STARS_PATH = "order/stars/"
 
-    def __init__(self):
-        self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))
-        self.currency = cast(str, getattr(settings, "FRAGMENT_CURRENCY", None))
+    def __init__(self, client: httpx.AsyncClient, fragment_tx_service: FragmentTransactionService):
+        self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))  # noqa
+        self.currency = cast(str, getattr(settings, "FRAGMENT_CURRENCY", None))  # noqa
+        self.webhook_secret = cast(str, getattr(settings, "FRAGMENT_WEBHOOK_SECRET", None))  # noqa
+        self.site_domain = cast(str, getattr(settings, "SITE_DOMAIN", None))  # noqa
+        self.debug = cast(bool, getattr(settings, "DEBUG_FRAGMENT", False))  # noqa
 
-        if not all([self.url, self.currency]):
+        if not all([self.url, self.currency, self.webhook_secret]):
             logger.error("fragment-api не сконфигурирован")
             raise ValueError("fragment-api не сконфигурирован")
 
@@ -38,12 +61,83 @@ class FragmentClient:
             logger.error("fragment-api принимает только ton или usdt_ton")
             raise ValueError("fragment-api принимает только ton или usdt_ton")
 
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._fragment_tx_service = fragment_tx_service
+        self._client = client
 
-    async def aclose(self) -> None:
-        await self._client.aclose()
+    def build_response_url(self, transaction_id: UUID | str) -> str:
+        query = {
+            "tx_id": str(transaction_id),
+            "token": str(self.webhook_secret)
+        }
+        return f"{urljoin(self.site_domain, reverse(FRAGMENT_WEBHOOK))}?{urlencode(query)}"
 
-    async def resolve_username(self, username: str, delay: float | None = 3.0) -> bool:
+    async def check_is_enough_currency_for_stars(
+            self,
+            amount_stars: int,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> None:
+        bot_message = (
+            "Не получилось проверить цены на бирже звёзд, чтобы убедиться, что бот сможет сделать автоматический "
+            "перевод звёзд. Попробуй сделать покупку позже или обратись в тех. поддержку"
+        )
+
+        def _get_item[T: HasCurrency](iterable: tuple[T, ...]) -> T | None:
+            for item in iterable:
+                if item["currency"].lower() == self.currency:
+                    return item
+            return None
+
+        current_prices = await self.get_current_prices(
+            self.debug,
+            timeout=timeout, connect=connect
+        )
+        if current_prices is None:
+            technical_message = "fragment-api вернул пустой список цен"
+            logger.error(technical_message)
+            raise FragmentAPITemporaryError(technical_message, bot_message)
+
+        current_price = _get_item(current_prices)
+        if current_price is None:
+            technical_message = f'Не удалось найти цену звёзд для валюты "{self.currency}"'
+            logger.error(technical_message)
+            raise FragmentAPITemporaryError(technical_message, bot_message)
+
+        balances = await self.get_wallet_balances(
+            self.debug,
+            timeout=timeout, connect=connect
+        )
+        balance = _get_item(balances)
+        if balance is None:
+            technical_message = f'Не удалось найти баланс для валюты "{self.currency}"'
+            logger.error(technical_message)
+            raise FragmentAPITemporaryError(technical_message, bot_message)
+
+        amount_stars_to_quantity_ratio = Decimal(amount_stars / current_price["quantity"])
+        total_price =  amount_stars_to_quantity_ratio * Decimal(current_price["price"])
+
+        balance_amount = Decimal(balance["amount"])
+        if balance_amount - total_price < 0:
+            technical_message = f'На балансе не хватает средств в валюте "{self.currency}", {total_price = }, {balance_amount = }'
+            logger.error(technical_message)
+            bot_message = (
+                f"В данный момент у бота нет возможности перевести {amount_stars} звёзд"
+                f'{". Попробуй выбрать меньшее количество" if amount_stars > 50 else " — обратись в тех. поддержку"}'
+            )
+            raise FragmentAPITemporaryError(technical_message, bot_message)
+
+        # TODO: добавить проверку с "удержанным" балансом из БД
+
+        return None
+
+    async def resolve_username(
+            self,
+            username: str,
+            *,
+            delay: float | None = 3.0,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> bool:
         """
         Принимает `username`. Наличие знака `@` неважно. `username` должен начинаться с любой буквы, далее разрешены
         любые буквы, цифры и знак `_`. Длина `username` (без учёта `@`) - от `2` до `31` знаков.
@@ -66,66 +160,32 @@ class FragmentClient:
             await asyncio.sleep(delay)
 
         username = username.lstrip("@")
-        # Заглушка для тестов
-        # if username == "True":
-        #     return True
-        # else:
-        #     return False
-        return await self._find_user_by_username(username)
 
-    async def check_is_enough_currency_for_stars(self, amount_stars: int) -> None:
-        bot_message = (
-            "Не получилось проверить цены на бирже звёзд, чтобы убедиться, что бот сможет сделать автоматический "
-            "перевод звёзд. Попробуй сделать покупку позже или обратись в тех. поддержку"
-        )
+        if self.debug:
+            if username.lower() != "false":
+                return True
+            else:
+                return False
 
-        def _get_item[T: HasCurrency](iterable: tuple[T, ...]) -> T | None:
-            for item in iterable:
-                if item["currency"].lower() == self.currency:
-                    return item
-            return None
+        return await self._find_user_by_username(username, timeout=timeout, connect=connect)
 
-        current_prices = await self.get_current_prices()
-        if current_prices is None:
-            technical_message = "fragment-api вернул пустой список цен"
-            logger.error(technical_message)
-            raise FragmentAPITemporaryError(technical_message, bot_message)
-
-        current_price = _get_item(current_prices)
-        if current_price is None:
-            technical_message = f'Не удалось найти цену звёзд для валюты "{self.currency}"'
-            logger.error(technical_message)
-            raise FragmentAPITemporaryError(technical_message, bot_message)
-
-        balances = await self.get_wallet_balances()
-        balance = _get_item(balances)
-        if balance is None:
-            technical_message = f'Не удалось найти баланс для валюты "{self.currency}"'
-            logger.error(technical_message)
-            raise FragmentAPITemporaryError(technical_message, bot_message)
-
-        amount_stars_to_quantity_ratio = Decimal(amount_stars / current_price["quantity"])
-        total_price =  amount_stars_to_quantity_ratio * Decimal(current_price["price"])
-
-        balance_amount = Decimal(balance["amount"])
-        if balance_amount - total_price < 0:
-            technical_message = f'На балансе не хватает средств в валюте "{self.currency}", {total_price = }, {balance_amount = }'
-            logger.error(technical_message)
-            bot_message = (
-                f"В данный момент у бота нет возможности перевести {amount_stars} звёзд"
-                f'{". Попробуй выбрать меньшее количество" if amount_stars > 50 else " — обратись в тех. поддержку"}'
-            )
-            raise FragmentAPITemporaryError(technical_message, bot_message)
-
-        return None
-
-    async def send_stars(self, username: str, amount_stars: int) -> SendStarsResponse:
+    async def send_stars(
+            self,
+            username: str,
+            amount_stars: int,
+            transaction_id: UUID | str = "",
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> SendStarsResponse:
         """
-        Принимает `username` и `amount_stars`.
+        Принимает `username`, `amount_stars` и опционально `transaction_id`.
 
         `amount_stars` в текущем виде проверяются во фронте.
 
         `username` проверяется во fragment-api, поэтому в случае некорректного username будет ошибка 400.
+
+        Если указан `transaction_id`, то запрос к fragment-api будет с использованием вебхука.
 
         Может выбросить `FragmentAPIError` (по смыслу, текст ошибок может отличаться)::
 
@@ -142,19 +202,21 @@ class FragmentClient:
         Для отображения информации об ошибках пользователю их следует отлавливать либо в `error_handler`, либо,
         если такой возможности нет, с помощью `try except`.
         """
-        # Заглушка для тестов
-        # return {
-        #     "success": True,
-        #     "receiver": "dummy_receiver",
-        #     "sender": {"phone_number": "dummy_phone_number"},
-        #     "price": {"currency": self.currency, "amount": "1337.0"},
-        #     "fee": {"currency": self.currency, "amount": "1337.0"},
-        #     "ref_id": "dummy_ref_id",
-        #     "status": "dummy_status",
-        #     "type": "dummy_type",
-        #     "error": "dummy_error",
-        #     "created_at": "dummy_created_at",
-        # }
+        if self.debug:
+            return {
+                "success": True,
+                "id": str(uuid4()),
+                "receiver": "dummy_receiver",
+                "goods_quantity": 1337,
+                "sender": {"phone_number": "dummy_phone_number", "name": "dummy_name"},
+                "price": {"currency": self.currency, "amount": "1337.0"},
+                "fee": {"currency": self.currency, "amount": "1337.0"},
+                "ref_id": "dummy_ref_id",
+                "status": "CREATED",
+                "type": "STARS",
+                "error": "dummy_error",
+                "created_at": "dummy_created_at",
+            }
 
         username = username.lstrip("@").strip()
 
@@ -173,12 +235,12 @@ class FragmentClient:
             logger.exception(error_msg)
             raise FragmentAPIError(error_msg)
 
-        if not await self.resolve_username(username, delay=None):
+        if not await self.resolve_username(username, delay=None, timeout=timeout, connect=connect):
             error_msg = f"Не найден {username}"
             logger.error(error_msg)
             raise FragmentAPIError(error_msg)
 
-        await self.check_is_enough_currency_for_stars(amount_stars)
+        await self.check_is_enough_currency_for_stars(amount_stars, timeout=timeout, connect=connect)
 
         payload = {
             "username": username,
@@ -187,19 +249,64 @@ class FragmentClient:
             "currency": self.currency
         }
 
-        return await self._send_stars_request(payload)
+        if transaction_id:
+            payload["response_url"] = self.build_response_url(transaction_id)
 
-    async def get_current_prices(self):
-        response = await self._make_request("GET", self.GET_CURRENT_PRICES)
+        return await self._send_stars_request(payload, timeout=timeout, connect=connect)
+
+    async def get_current_prices(
+            self,
+            debug: bool = False,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> tuple[StarsJSON, ...] | None:
+        if debug:
+            dummy: StarsJSON = {
+                "quantity": 50,
+                "price": "0.0000000000001",
+                "currency": self.currency,
+                "updated_at": "dummy_updated_at"
+            }
+            return (dummy, )
+
+        response = await self._make_request(
+            "GET",
+            self.GET_CURRENT_PRICES,
+            timeout=timeout, connect=connect
+        )
         response_data = cast(CurrentPricesResponse, response.json())
         return response_data["stars"]
 
-    async def get_wallet_balances(self):
-        response = await self._make_request("GET", self.GET_WALLET_BALANCE)
+    async def get_wallet_balances(
+            self,
+            debug: bool = False,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> tuple[BalanceForCurrencyJSON, ...]:
+        if debug:
+            dummy: BalanceForCurrencyJSON = {
+                "currency": self.currency,
+                "amount": "1337000.00",
+            }
+            return (dummy, )
+
+        response = await self._make_request(
+            "GET",
+            self.GET_WALLET_BALANCE,
+            timeout=timeout, connect=connect
+        )
         response_data = cast(BalanceResponse, response.json())
         return response_data["balances"]
 
-    async def _find_user_by_username(self, username: str) -> bool:
+    async def _find_user_by_username(
+            self,
+            username: str,
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> bool:
         """
         Принимает username без знака `@`.
 
@@ -214,7 +321,11 @@ class FragmentClient:
         Returns:
             если пользователь найден - `True`, иначе `False`
         """
-        response = await self._make_request("GET", f"{self.GET_USER_PATH}{username}/")
+        response = await self._make_request(
+            "GET",
+            f"{self.GET_USER_PATH}{username}/",
+            timeout=timeout, connect=connect
+        )
 
         if response.status_code == 200:
             return True
@@ -231,8 +342,19 @@ class FragmentClient:
             f"Неизвестный ответ от сервера fragment-api:\n{response.status_code = } - {response.text = }"
         )
 
-    async def _send_stars_request(self, payload: dict[str, str | int | bool]) -> SendStarsResponse:
-        response = await self._make_request("POST", self.SEND_STARS_PATH, payload)
+    async def _send_stars_request(
+            self,
+            payload: dict[str, str | int | bool],
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
+    ) -> SendStarsResponse:
+        response = await self._make_request(
+            "POST",
+            self.SEND_STARS_PATH,
+            payload,
+            timeout=timeout, connect=connect
+        )
 
         if response.status_code == 200:
             response_data = cast(SendStarsResponse, response.json())
@@ -244,24 +366,34 @@ class FragmentClient:
     async def _make_request(
             self,
             method: str, path: str, data: Mapping[str, object] | None = None,
-            timeout: float = 30.0, retry_on_429: bool = True
+            *,
+            timeout: float | None = None,
+            connect: float | None = None
     ) -> httpx.Response:
         headers = await self._get_headers(method)
         full_url = urljoin(self.url, path)
+        timeout_conf = create_new_timeout_conf_or_use_default(timeout, connect, TIMEOUT)
 
         try:
             if method == "POST":
-                response = await self._client.post(full_url, json=data, headers=headers, timeout=timeout)
+                response = await self._client.post(full_url, json=data, headers=headers, timeout=timeout_conf)
             else:
-                response = await self._client.get(full_url, headers=headers, timeout=timeout)
+                response = await self._client.get(full_url, headers=headers, timeout=timeout_conf)
+
+        except (*SAFE_TO_RETRY, ) as exc:
+            err_msg = "Произошла ошибка соединения при обращении к fragment-api"
+            logger.exception(err_msg)
+            raise FragmentAPINetworkError(err_msg) from exc
 
         except httpx.TimeoutException as exc:
-            logger.exception(f"Превышено время ожидания при обращении к fragment-api")
-            raise FragmentAPIError("Превышено время ожидания при обращении к fragment-api") from exc
+            err_msg = "Превышено время ожидания при обращении к fragment-api"
+            logger.exception(err_msg)
+            raise FragmentAPIError(err_msg) from exc
 
         except httpx.HTTPError as exc:
-            logger.exception(f"Ошибка HTTP во время обращения к fragment-api: {exc}")
-            raise FragmentAPIError(f"Ошибка HTTP во время обращения к fragment-api: {exc}") from exc
+            err_msg = f"Ошибка HTTP во время обращения к fragment-api: {exc}"
+            logger.exception(err_msg)
+            raise FragmentAPIError(err_msg) from exc
 
         if response.status_code in [401, 403]:
             logger.debug(f"Токен fragment-api истек;\n{response.status_code = } - {response.text = }")
@@ -280,11 +412,7 @@ class FragmentClient:
                 retry_after = None
 
             if retry_after is not None:
-                if retry_on_429 and retry_after <= 30.0:
-                    await asyncio.sleep(retry_after)
-                    return await self._make_request(method, path, data=data, timeout=timeout, retry_on_429=False)
-                else:
-                    error_msg += f", {retry_after = }s"
+                error_msg += f", {retry_after = }s"
 
             logger.exception(error_msg)
             raise FragmentAPITooManyRequests(retry_after, error_msg)
@@ -292,7 +420,7 @@ class FragmentClient:
         return response
 
     async def _get_headers(self, method: str) -> dict[str, str]:
-        token = (await FragmentAPI.aget_solo()).token
+        token = await self._fragment_tx_service.get_fragment_api_jwt_token()
         if not token:
             logger.exception("Токен fragment-api отсутствует")
             raise FragmentAPIError("Токен fragment-api отсутствует")

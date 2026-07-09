@@ -8,16 +8,16 @@ from typing import override
 
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
-from telegram.constants import ParseMode
 
-from bot.keyboards.error import KeyboardMethodError, build_error_kb
+from bot.keyboards.error import KeyboardMethodError, build_support_kb
 
+from bot.renderers.base import delete_message, send_new_message
 from bot.utils.injector import inject
 
 from bot.context import get_view_context
 
 from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITemporaryError, FragmentAPITooManyRequests
-from core.integrations.platega.schemas import PlategaAPIError
+from core.integrations.platega.errors import PlategaAPIError
 from core.services.payment import MaintenanceModeException, NoUsernameError
 from core.services.support import SupportService
 
@@ -29,7 +29,7 @@ class DataclassEncoder(json.JSONEncoder):
     @override
     def default(self, o: object):
         if is_dataclass(o) and not isinstance(o, type):
-            return asdict(o)
+            return asdict(o)  # noqa
         if isinstance(o, Decimal):
             return str(o)
         return super().default(o)
@@ -51,7 +51,7 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
         return
 
     support_url = await support_service.get_support_url()
-    parse_mode = ParseMode.HTML
+    reply_markup = build_support_kb(support_url)
     error_type = context.error.__class__.__name__
 
     if isinstance(context.error, (FragmentAPIError, PlategaAPIError)):
@@ -61,7 +61,6 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "с помощью /start или обратись в тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, FragmentAPITooManyRequests):
         retry_after = str(context.error.retry_after) if context.error.retry_after else ""
@@ -74,18 +73,15 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             f" с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, FragmentAPITemporaryError):
         text = f"⚠️ <b>Временные неполадки...</b>\n\n{context.error.bot_message}"
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, NoUsernameError):
         text = (
             f"⚠️ <b>Не получилось определить username...</b>\n\n"
             f"Для перевода звёзд он обязателен, поэтому попробуй сделать заказ заново"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, KeyboardMethodError):
         text = (
@@ -94,20 +90,19 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "обратись в тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, MaintenanceModeException):
         text = (
             "⚠️ <b>Извини, бот на техническом перерыве...</b>\n\n"
             "Если оформлялся заказ, то он был отменён, поэтому в таком случае нужно начать новый с помощью /start"
         )
+
         ctx = get_view_context(context)
         try:
-            _ = await ctx.active_conversation.delete()
-        except:
+            _ = await delete_message(ctx.active_conversation)
+        except Exception:  # noqa
             pass
         ctx.active_conversation = None
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     elif isinstance(context.error, InvalidCallbackData) and update.callback_query:
         text = (
@@ -115,13 +110,13 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "Начни заказ снова с помощью /start или обратись в тех. поддержку, если ошибка останется"
         )
         _ = await update.callback_query.answer(text, show_alert=True)
+        return
 
     elif isinstance(context.error, (pickle.UnpicklingError, TypeError, AttributeError)):
         text = (
             "⚠️ <b>Структура меню обновилась...</b>\n\n"
             "Начни заказ снова с помощью /start или обратись в тех. поддержку, если ошибка останется"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
 
     else:
         text = (
@@ -130,4 +125,5 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
             "тех. поддержку с текстом ошибки\n\n"
             f"Текст ошибки:\n<pre>{error_type}: {context.error}</pre>"
         )
-        _ = await update.effective_user.send_message(text, reply_markup=build_error_kb(support_url), parse_mode=parse_mode)
+
+    _ = await send_new_message(update, text, reply_markup, photo_name=None)

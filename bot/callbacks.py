@@ -20,13 +20,22 @@ class BackCallback:
 
 
 @dataclass(frozen=True)
+class ProfileMenuCallback:
+    action: ProfileAction
+
+
+@dataclass(frozen=True)
+class HistoryPageCallback:
+    page: int
+
+
+@dataclass(frozen=True)
 class FixedQuantityCallback:
     amount: int
 
 
 @dataclass(frozen=True)
-class CustomQuantityCallback:
-    pass
+class CustomQuantityCallback: pass
 
 
 @dataclass(frozen=True)
@@ -44,18 +53,19 @@ class PaymentMethodCallback:
 
 
 @dataclass(frozen=True)
-class ConfirmOrderCallback:
-    pass
+class PromoCodeCallback: pass
 
 
 @dataclass(frozen=True)
-class ProfileMenuCallback:
-    action: ProfileAction
+class CancelPromoCodeCallback: pass
 
 
 @dataclass(frozen=True)
-class HistoryPageCallback:
-    page: int
+class OrderConfirmedCallback: pass
+
+
+@dataclass(frozen=True)
+class RepeatOrderCallback: pass
 
 
 @dataclass(frozen=True)
@@ -73,8 +83,3 @@ class ReferralDetailsCallback:
 class ReferralPurchasesPageCallback:
     ref_user_id: int
     page: int
-
-
-@dataclass(frozen=True)
-class RepeatOrderCallback:
-    pass

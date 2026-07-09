@@ -1,29 +1,85 @@
+import httpx
 from typing import final
-from dishka import Provider, Scope, provide
+from collections.abc import Callable, AsyncIterable
 
-from core.integrations.fragment.client import FragmentClient
-from core.integrations.platega.client import PlategaClient
+from dishka import AsyncContainer, Provider, Scope, provide, make_async_container
+from dishka.integrations.base import wrap_injection
+
+from core.integrations.fragment.client import FragmentClient, TIMEOUT as FRAGMENT_TIMEOUT, LIMITS as FRAGMENT_LIMITS
+from core.integrations.platega.client import PlategaClient, TIMEOUT as PLATEGA_TIMEOUT, LIMITS as PLATEGA_LIMITS
+
+from core.repositories.fragment_transaction import FragmentTransactionRepository
 from core.repositories.payment import PaymentRepository
+from core.repositories.promo_code import PromoCodeRepository
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
-from core.services.star_price import StarService
+
+from core.services.fragment_transaction import FragmentTransactionService
 from core.services.payment import PaymentService
+from core.services.promo_code import PromoCodeService
+from core.services.star_price import StarService
 from core.services.stats import StatsService
 from core.services.support import SupportService
+from core.services.transaction import TransactionService
 from core.services.user import UserService
 
 
 @final
 class BusinessLogicProvider(Provider):
+    fragment_tx_repo = provide(FragmentTransactionRepository, scope=Scope.APP)
     payment_repo = provide(PaymentRepository, scope=Scope.APP)
+    promo_repo = provide(PromoCodeRepository, scope=Scope.APP)
     trans_repo = provide(TransactionRepository, scope=Scope.APP)
     user_repo = provide(UserRepository, scope=Scope.APP)
 
-    fragment_client = provide(FragmentClient, scope=Scope.APP)
-    platega_client = provide(PlategaClient, scope=Scope.APP)
-
-    support_service = provide(SupportService, scope=Scope.APP)
-    stats_service = provide(StatsService, scope=Scope.APP)
-    star_service = provide(StarService, scope=Scope.APP)
+    fragment_tx_service = provide(FragmentTransactionService,  scope=Scope.APP)
     payment_service = provide(PaymentService, scope=Scope.APP)
+    promo_service = provide(PromoCodeService, scope=Scope.APP)
+    star_service = provide(StarService, scope=Scope.APP)
+    stats_service = provide(StatsService, scope=Scope.APP)
+    support_service = provide(SupportService, scope=Scope.APP)
+    trans_service = provide(TransactionService, scope=Scope.APP)
     user_service = provide(UserService, scope=Scope.APP)
+
+    @provide(scope=Scope.APP)
+    async def platega_client(self) -> AsyncIterable[PlategaClient]:
+        async with httpx.AsyncClient(timeout=PLATEGA_TIMEOUT, limits=PLATEGA_LIMITS) as client:
+            yield PlategaClient(client)
+            # Код после yield выполняется при вызове container.close()
+
+    @provide(scope=Scope.APP)
+    async def fragment_client(self, fragment_tx_service: FragmentTransactionService) -> AsyncIterable[FragmentClient]:
+        async with httpx.AsyncClient(timeout=FRAGMENT_TIMEOUT, limits=FRAGMENT_LIMITS) as client:
+            yield FragmentClient(client, fragment_tx_service)
+            # Код после yield выполняется при вызове container.close()
+
+
+# Глобальная переменная, которая будет хранить контейнер
+# строго для текущего процесса ОС (Gunicorn, Celery-воркер и т.д.)
+_container: AsyncContainer | None = None
+
+
+def get_container() -> AsyncContainer:
+    """Ленивая инициализация: контейнер создается только при первом обращении к нему."""
+    global _container
+    if _container is None:
+        _container = make_async_container(BusinessLogicProvider())
+    return _container
+
+
+async def close_container() -> None:
+    """
+    Эту функцию нужно вызывать при завершении работы процесса,
+    чтобы корректно закрыть все httpx-соединения и генераторы внутри провайдера.
+    """
+    global _container
+    if _container is not None:
+        await _container.close()
+        _container = None
+
+
+# TODO: в будущем можно заменить текущий inject на вот этот, однако для его использования нужно оборачивать
+#       зависимости в FromDishka; этот декоратор можно использовать только с асинхронными функциями, так как контейнер
+#       асинхронный
+def inject[**P,R](func: Callable[P,R]):
+    return wrap_injection(func=func, container_getter=lambda args, kwargs: get_container(), is_async=True)

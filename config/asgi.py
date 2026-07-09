@@ -8,6 +8,7 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 """
 
 import os
+import logging
 from typing import Any, Callable
 from collections.abc import Coroutine
 
@@ -17,7 +18,10 @@ from django.core.asgi import get_asgi_application
 from blacknoise import BlackNoise
 
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+_ = os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+logger = logging.getLogger(__name__)
+
 
 django_asgi_application = get_asgi_application()
 
@@ -34,10 +38,20 @@ async def application(scope: dict[str, Any], receive: AsgiReceive, send: AsgiSen
     if scope['type'] == 'lifespan':
         while True:
             message = await receive()
+
             if message['type'] == 'lifespan.startup':
                 await send({'type': 'lifespan.startup.complete'})
+
             elif message['type'] == 'lifespan.shutdown':
+                logger.info("Server is stopping, closing dishka container...")
+
+                from core.ioc import close_container
+
+                await close_container()
+
+                logger.info("Dishka container closed successfully!")
                 await send({'type': 'lifespan.shutdown.complete'})
                 return
+
     else:
         await static_app(scope, receive, send)

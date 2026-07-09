@@ -7,7 +7,7 @@ from core.integrations.fragment.schemas import StarsJSON
 
 def parse_retry_after(retry_after_str: str) -> int | None:
     """Возвращает кол-во секунд либо None."""
-    digit_pattern = re.compile(r"(\d+)(s\b|ms\b|m\b)?")
+    digit_pattern = re.compile(r"(\d+)(s\b|ms\b|m\b|h\b)?")
     retry_after = digit_pattern.search(retry_after_str)
 
     if retry_after is None:
@@ -20,10 +20,12 @@ def parse_retry_after(retry_after_str: str) -> int | None:
         return retry_after_int
 
     if measurement == "ms":
-        retry_after_int = ceil(retry_after_int / 1000)
-    elif measurement == "m":
-        retry_after_int = retry_after_int * 60
-    return retry_after_int
+        return ceil(retry_after_int / 1000)
+
+    if measurement == "m":
+        return retry_after_int * 60
+
+    return retry_after_int * 60 * 60
 
 
 def get_prices_for_currency(stars_json: tuple[StarsJSON] | None, currency: str) -> StarsJSON | None:

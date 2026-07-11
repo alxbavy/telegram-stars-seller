@@ -34,7 +34,7 @@ async def show_order_history_page(update: Update, history_dto: OrderHistoryPageD
         orders_text = "\n".join(lines)
 
     text = (
-        "📦 <b>История заказов</b>\n\n"
+        "📦 <b>История покупок</b>\n\n"
         "Дата покупки — Кол-во звёзд — Цена\n"
         f"{orders_text}"
     )

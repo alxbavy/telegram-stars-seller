@@ -327,7 +327,15 @@ async def send_stars_workflow[**P,R](
 
     except Exception as exc:
         create_task_save_error_to_db(str(exc))
-        raise exc
+        _ = save_status_by_key(
+            ServicesNames.FRAGMENT, transaction_id,
+            TransactionStatus.FAILED
+        )
+        _ = update_transaction_status_task.apply_async(
+            args=(str(transaction_id), parsed_payload, payment_method),
+            kwargs={"started_at": None}
+        )
+        return f"exception occurred trying to send stars for transaction {transaction_id}"
 
     new_status = response["status"]
     fragment_tx_id = response.get("id", None)

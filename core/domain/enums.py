@@ -110,7 +110,8 @@ STATUS_TRANSITION_MATRIX: dict[TransactionStatus | str, tuple[TransactionStatus,
         TransactionStatus.SUCCESS, TransactionStatus.CHARGEBACKED
     ),
     TransactionStatus.FAILED: (
-        TransactionStatus.FAILED, TransactionStatus.SUCCESS, TransactionStatus.CHARGEBACKED
+        TransactionStatus.FAILED, TransactionStatus.SUCCESS,
+        TransactionStatus.SEND_CREATED, TransactionStatus.IN_DOUBT, TransactionStatus.CHARGEBACKED
     ),
     TransactionStatus.IN_DOUBT: (
         TransactionStatus.IN_DOUBT,

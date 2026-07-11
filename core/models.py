@@ -98,7 +98,7 @@ class Transaction(models.Model):
         related_name="transactions",
         verbose_name="Покупатель"
     )
-    amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Без скидки")
+    amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Со скидкой (если есть)")
     amount_stars = models.IntegerField(verbose_name="Количество звезд")
     target_username = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
     status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")

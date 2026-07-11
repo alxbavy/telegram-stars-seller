@@ -1,4 +1,5 @@
 from decimal import Decimal
+from collections.abc import Iterable
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -7,11 +8,8 @@ from bot.callbacks import (
     RecipientModeCallback, PaymentMethodCallback, PromoCodeCallback, OrderConfirmedCallback, RepeatOrderCallback
 )
 from bot.enums import BackDestination, RecipientMode
-from core.models import PromoCode
 
-from core.repositories.utils import db_action_with_tenacity
-from core.services.payment import PaymentService
-from core.services.star_price import StarService
+from core.dto.payment import PaymentMethodDTO
 
 
 def build_quantity_kb() -> InlineKeyboardMarkup:
@@ -63,6 +61,7 @@ def build_user_not_found_kb() -> InlineKeyboardMarkup:
     ])
 
 
+# TODO: удалить это и всё с этим связанное, в том числе упоминания в исключениях
 def build_payment_methods_kb_static(sbp_price: Decimal, card_price: Decimal, back_dest: BackDestination) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback(
@@ -83,41 +82,26 @@ def build_payment_methods_kb_static(sbp_price: Decimal, card_price: Decimal, bac
     ])
 
 
-# TODO: рефакторинг - можно вынести сервисы в хэндлер, и передавать сюда payment_methods_with_prices: dict
 async def build_payment_methods_kb_dynamic(
-        stars_count: int,
-        payment_service: PaymentService, star_service: StarService,
-        promo: PromoCode | None,
+        payment_methods_with_prices: Iterable[tuple[PaymentMethodDTO, Decimal]],
         back_dest: BackDestination
 ) -> InlineKeyboardMarkup:
     kb: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton("🎟️ Ввести промокод", callback_data=PromoCodeCallback())]
     ]
 
-    payment_methods = await db_action_with_tenacity(payment_service.get_active_payment_methods())
-    for method in payment_methods:
+    kb.extend([
+        [InlineKeyboardButton(
+            f"{method.name} — {price} ₽", callback_data=PaymentMethodCallback(
+                method_api=method.api_name,
+                method=method.name,
+                method_external_id=method.external_id,
+                price=price,
+                commission_percent=None
+            )
+        )] for method, price in payment_methods_with_prices
+    ])
 
-        emoji = ""
-        if "сбп" in method.name.lower():
-            emoji = "📲 "
-        elif any(word in method.name.lower() for word in ["карта", "картой", "эквайринг"]):
-            emoji = "💳 "
-        text = method.name
-
-        price = await db_action_with_tenacity(
-            star_service.get_order_price(stars_count, method.commission_percent)
-        )
-        display_price = price
-        if promo is not None:
-            display_price = price * (1 - promo.discount / 100)
-
-        kb.append([InlineKeyboardButton(f"{emoji}{text} — {display_price} ₽", callback_data=PaymentMethodCallback(
-            method_api=method.api_name,
-            method=method.name,
-            method_external_id=method.external_id,
-            price=price,
-            commission_percent=None
-        ))])
     kb.append([InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))])
 
     return InlineKeyboardMarkup(kb)

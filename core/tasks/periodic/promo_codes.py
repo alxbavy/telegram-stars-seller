@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 import logging
 from datetime import timedelta
@@ -14,7 +16,7 @@ from core.models import TelegramUser
 logger = logging.getLogger(__name__)
 
 
-def _deactivate_unused_promo_codes[**P, R](
+def _deactivate_unused_promo_codes[**P,R](
         celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float
 ) -> int | None:
     one_day_ago = timezone.now() - timedelta(days=1)
@@ -32,7 +34,7 @@ def _deactivate_unused_promo_codes[**P, R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def deactivate_unused_promo_codes_task[**P,R](self: Task[P,R], *, started_at: float | None) -> None:
+def deactivate_unused_promo_codes_task[**P,R](self: Task[P,R], *, started_at: float | None) -> str:
     """Деактивирует у пользователей активные промокоды, которые были активированы больше суток назад."""
 
     kwargs = cast(dict[str, object], self.request.kwargs or {}).copy()  # noqa
@@ -44,9 +46,11 @@ def deactivate_unused_promo_codes_task[**P,R](self: Task[P,R], *, started_at: fl
     timeout = 300.0  # 5 минут
     result = _deactivate_unused_promo_codes(self, started_at, kwargs, timeout)
     if result is None:
-        return
+        return f"promo deactivations timed out"
 
     deactivated_promos_count = result
 
     if deactivated_promos_count > 0:
         logger.info(f"Сборка мусора: деактивировано {deactivated_promos_count} неиспользованных промокодов")
+
+    return f"deactivated {deactivated_promos_count} promo codes"

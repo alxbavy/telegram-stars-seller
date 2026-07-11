@@ -143,7 +143,6 @@ class PaymentService:
                 payload["promo_id"] = promo.id
                 payload["promo_name"] = promo.name
                 payload["promo_discount"] = str(promo.discount)
-                price = price * (1 - promo.discount / 100)
 
             username = user_buyer.username
             if not username:
@@ -159,9 +158,6 @@ class PaymentService:
                 username,
                 payload=json.dumps(payload, ensure_ascii=False)
             )
-
-            if promo is not None:
-                payment_dto.price = payment_dto.price / (1 - promo.discount / 100)
 
         else:
             raise NotImplementedError("Only Platega API is supported now")

@@ -45,7 +45,7 @@ class FragmentClient:
     GET_USER_PATH = "misc/user/"
     SEND_STARS_PATH = "order/stars/"
 
-    def __init__(self, client: httpx.AsyncClient, fragment_tx_service: FragmentTransactionService):
+    def __init__(self, client: httpx.Client, fragment_tx_service: FragmentTransactionService):
         self.url = cast(str, getattr(settings, "FRAGMENT_API_URL", None))  # noqa
         self.currency = cast(str, getattr(settings, "FRAGMENT_CURRENCY", None))  # noqa
         self.webhook_secret = cast(str, getattr(settings, "FRAGMENT_WEBHOOK_SECRET", None))  # noqa
@@ -374,11 +374,14 @@ class FragmentClient:
         full_url = urljoin(self.url, path)
         timeout_conf = create_new_timeout_conf_or_use_default(timeout, connect, TIMEOUT)
 
-        try:
+        def do_sync_request() -> httpx.Response:
             if method == "POST":
-                response = await self._client.post(full_url, json=data, headers=headers, timeout=timeout_conf)
-            else:
-                response = await self._client.get(full_url, headers=headers, timeout=timeout_conf)
+                return self._client.post(full_url, json=data, headers=headers, timeout=timeout_conf)
+
+            return self._client.get(full_url, headers=headers, timeout=timeout_conf)
+
+        try:
+            response = await asyncio.to_thread(do_sync_request)
 
         except (*SAFE_TO_RETRY, ) as exc:
             err_msg = "Произошла ошибка соединения при обращении к fragment-api"

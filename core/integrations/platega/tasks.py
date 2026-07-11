@@ -18,7 +18,7 @@ from core.integrations.platega.webhook_utils import (
     safe_create_transaction_with_retries,
     safe_get_transaction_with_retries,
     safe_set_status_for_transaction_obj_with_retries,
-    safe_set_status_for_transaction_id_with_retries, safe_create_fragment_transaction_if_not_sent_with_retries,
+    safe_set_status_for_transaction_id_with_retries, create_fragment_transaction_if_not_sent_with_retries,
     safe_update_transaction_payload_with_retries
 )
 from core.integrations.platega.webhook_workflow import (
@@ -26,7 +26,7 @@ from core.integrations.platega.webhook_workflow import (
 )
 from core.integrations.webhook_utils import ServicesNames, transform_into_internal_status_or_keep_original
 from core.services.redis_service import (
-    acquire_lock, get_lock_or_retry, execute_critical_section_with_lock,
+    acquire_lock, get_lock_or_retry,
     get_lock_payment_transaction, get_lock_payment_message_polling,
     get_and_del_by_key, save_status_by_key,
 )
@@ -38,21 +38,21 @@ cleanup_logger = logging.getLogger("cleanup_audit")
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def process_payment_background_task[**P,R](
+def update_transaction_status_task[**P,R](
         self: Task[P,R],
         transaction_id: str,
         parsed_payload: PaymentPayloadDict | None,
         payment_method: str,
         *,
         started_at: float | None
-) -> None:
+) -> str:
     """
     Эта задача выполнится в фоне воркером Celery.
 
     В аргументах должны быть объекты, которые могут быть сериализуемые в JSON.
     """
 
-    async def critical_section() -> None:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
@@ -79,12 +79,11 @@ def process_payment_background_task[**P,R](
             new_status = fragment_status
 
         else:
-            logger.debug(f"New status for transaction {transaction_id} was already processed")
-            return None
+            return f"new status for transaction {transaction_id} was already processed"
 
         is_success: bool = False
         try:
-            is_success = await process_payment_background_workflow(
+            is_success, msg = await update_transaction_status_workflow(
                 self,
                 UUID(transaction_id),
                 new_status,
@@ -92,6 +91,7 @@ def process_payment_background_task[**P,R](
                 payment_method,
                 started_at=started_at
             )
+            return msg
 
         finally:
             if not is_success:
@@ -108,7 +108,11 @@ def process_payment_background_task[**P,R](
                     )
 
     lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
-    return execute_critical_section_with_lock(critical_section, lock)
+
+    try:
+        return async_to_sync(critical_section)()
+    finally:
+        lock.release()
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
@@ -126,13 +130,13 @@ def update_order_message_task[**P,R](
         promo_name: str, promo_discount: str | None,
         *,
         started_at: float | None
-) -> None:
-    async def critical_section() -> None:
+) -> str:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
 
-        await update_order_message_workflow(
+        return await update_order_message_workflow(
             self,
             parse_mode,
             user_id,
@@ -153,10 +157,12 @@ def update_order_message_task[**P,R](
     )
     if lock is None:
         # Если мы не смогли получить замок, значит мы дубликат - можно завершаться
-        logger.debug(f"Could not acquire lock for message polling {transaction_id}")
-        return None
+        return f"message already updating for transaction {transaction_id}"
 
-    return execute_critical_section_with_lock(critical_section, lock)
+    try:
+        return async_to_sync(critical_section)()
+    finally:
+        lock.release()
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
@@ -166,13 +172,13 @@ def update_transaction_payload_task[**P,R](
         new_payload: dict[str, object],
         *,
         started_at: float | None
-) -> None:
-    async def critical_section() -> None:
+) -> str:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
 
-        await update_transaction_payload_workflow(
+        return await update_transaction_payload_workflow(
             self,
             UUID(transaction_id),
             new_payload,
@@ -190,13 +196,13 @@ def prepare_send_stars_task[**P,R](
         payment_method: str,
         *,
         started_at: float | None
-) -> None:
-    async def critical_section() -> None:
+) -> str:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
 
-        await prepare_send_stars_workflow(
+        return await prepare_send_stars_workflow(
             self,
             UUID(transaction_id),
             parsed_payload,
@@ -205,7 +211,11 @@ def prepare_send_stars_task[**P,R](
         )
 
     lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
-    return execute_critical_section_with_lock(critical_section, lock)
+
+    try:
+        return async_to_sync(critical_section)()
+    finally:
+        lock.release()
 
 
 @shared_task(bind=True, max_retries=100)
@@ -216,13 +226,13 @@ def send_stars_task[**P,R](
         payment_method: str,
         *,
         started_at: float | None
-) -> None:
-    async def critical_section() -> None:
+) -> str:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
 
-        await send_stars_workflow(
+        return await send_stars_workflow(
             self,
             UUID(transaction_id),
             parsed_payload,
@@ -231,7 +241,11 @@ def send_stars_task[**P,R](
         )
 
     lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
-    return execute_critical_section_with_lock(critical_section, lock)
+
+    try:
+        return async_to_sync(critical_section)()
+    finally:
+        lock.release()
 
 
 async def prepare_send_stars_workflow[**P,R](
@@ -241,7 +255,7 @@ async def prepare_send_stars_workflow[**P,R](
         payment_method: str,
         *,
         started_at: float
-) -> None:
+) -> str:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -252,7 +266,7 @@ async def prepare_send_stars_workflow[**P,R](
         transaction_id
     )
     if transaction is None:
-        return
+        return f"transaction {transaction_id} is not found for preparing stars send"
 
     new_status = TransactionStatus.SENDING
     if not is_change_status_allowed(transaction.status, new_status):
@@ -260,20 +274,20 @@ async def prepare_send_stars_workflow[**P,R](
             args=(str(transaction_id), {"requested_status": new_status}),
             kwargs={"started_at": None}
         )
-        return
+        return f"change status from {transaction.status} to {new_status} for {transaction_id} is not allowed"
 
     is_changed_successfully = await safe_set_status_for_transaction_id_with_retries(
         celery_task, started_at, kwargs, timeout,
         transaction_id, new_status
     )
     if not is_changed_successfully:  # Точка невозврата - если статус уже был "В ДОСТАВКЕ", ничего не делаем
-        logger.exception(f"Transaction {transaction_id} was already {new_status}")
-        return
+        return f"transaction {transaction_id} was already {new_status}"
 
     _ = send_stars_task.apply_async(
         args=(str(transaction_id), parsed_payload, payment_method),
         kwargs={"started_at": None}
     )
+    return f"sent send_stars_task for transaction {transaction_id}"
 
 
 async def send_stars_workflow[**P,R](
@@ -283,7 +297,7 @@ async def send_stars_workflow[**P,R](
         payment_method: str,
         *,
         started_at: float
-) -> None:
+) -> str:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -293,47 +307,58 @@ async def send_stars_workflow[**P,R](
         celery_task, started_at, kwargs, timeout,
         transaction_id
     )
-    if transaction is None or transaction.status != TransactionStatus.SENDING:
-        return
+    if transaction is None:
+        return f"transaction {transaction_id} is not found for sending stars"
 
-    send_stars_result = await safe_create_fragment_transaction_if_not_sent_with_retries(
-        celery_task, started_at, kwargs, timeout,
-        transaction
-    )
-    response = send_stars_result[0]
+    if transaction.status != TransactionStatus.SENDING:
+        return f"transaction {transaction_id} doesn't have status SENDING"
 
-    new_status = None
-    fragment_tx_id = None
-    if response is not None:
-        new_status = response["status"]
-        fragment_tx_id = response.get("id", None)
+    def create_task_save_error_to_db(msg_to_save: str) -> None:
+        _ = update_transaction_payload_task.apply_async(
+            args=(str(transaction_id), {"err_msg": str(msg_to_save)}),
+            kwargs={"started_at": None}
+        )
 
-    if fragment_tx_id is not None and new_status is not None:
+    try:
+        response, err_msg = await create_fragment_transaction_if_not_sent_with_retries(
+            celery_task, started_at, kwargs, timeout,
+            transaction
+        )
+
+    except Exception as exc:
+        create_task_save_error_to_db(str(exc))
+        raise exc
+
+    new_status = response["status"]
+    fragment_tx_id = response.get("id", None)
+
+    if fragment_tx_id is not None:
         _ = save_status_by_key(ServicesNames.FRAGMENT__FROM_CREATION, transaction_id,new_status)
         _ = update_fragment_tx_task.apply_async(
             args=(str(fragment_tx_id), str(transaction_id)),
             kwargs={"started_at": None}
         )
 
-    if new_status is None:
-        new_status = TransactionStatus.IN_DOUBT
-
     _ = save_status_by_key(
         ServicesNames.FRAGMENT, transaction_id,
         transform_into_internal_status_or_keep_original(new_status, ServicesNames.FRAGMENT),
         if_not_exists=True
     )
-    _ = process_payment_background_task.apply_async(
+    _ = update_transaction_status_task.apply_async(
         args=(str(transaction_id), parsed_payload, payment_method),
         kwargs={"started_at": None}
     )
 
-    err_msg = send_stars_result[1]
     if err_msg:
-        _ = update_transaction_payload_task.apply_async(
-            args=(str(transaction_id), {"err_msg": str(err_msg)}),
-            kwargs={"started_at": None}
-        )
+        create_task_save_error_to_db(err_msg)
+        return err_msg
+
+    result_msg = f"transaction {transaction_id} fragment status: {new_status}"
+
+    if fragment_tx_id is None:
+        result_msg += "; fragment_tx_id is None"
+
+    return result_msg
 
 
 async def update_transaction_payload_workflow[**P,R](
@@ -342,7 +367,7 @@ async def update_transaction_payload_workflow[**P,R](
         new_payload: dict[str, object],
         *,
         started_at: float
-) -> None:
+) -> str:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -354,17 +379,23 @@ async def update_transaction_payload_workflow[**P,R](
         transaction_id
     )
     if transaction is None:
-        return
+        return f"transaction {transaction_id} is not found for payload update"
 
-    _ = await safe_update_transaction_payload_with_retries(
+    result = await safe_update_transaction_payload_with_retries(
         celery_task, started_at, kwargs, timeout,
         transaction, new_payload
     )
 
-    return
+    if result is None:
+        return f"updating payload for transaction {transaction_id} is timed out"
+
+    if not result[0]:
+        return f"failed to update payload for transaction {transaction_id}"
+
+    return f"updated payload for transaction {transaction_id}"
 
 
-async def process_payment_background_workflow[**P,R](
+async def update_transaction_status_workflow[**P, R](
         celery_task: Task[P,R],
         transaction_id: UUID,
         new_status: str,
@@ -372,7 +403,7 @@ async def process_payment_background_workflow[**P,R](
         payment_method: str,
         *,
         started_at: float
-) -> bool:
+) -> tuple[bool, str]:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -387,21 +418,21 @@ async def process_payment_background_workflow[**P,R](
     )
     if transaction is None:
         if parsed_payload is None:
-            return False
+            return False, f"transaction {transaction_id} is not found but parsed_payload is None"
 
         transaction = await safe_create_transaction_with_retries(
             celery_task, started_at, kwargs, timeout,
             transaction_id, new_status, parsed_payload, payment_method
         )
         if transaction is None:
-            return False
+            return False, f"transaction {transaction_id} is not found but couldn't recreate transaction"
 
     if not is_change_status_allowed(transaction.status, new_status):
         _ = update_transaction_payload_task.apply_async(
             args=(str(transaction_id), {"requested_status": new_status}),
             kwargs={"started_at": None}
         )
-        return False
+        return True, f"change from {transaction.status} to {new_status} for transaction {transaction_id} is not allowed"
 
     _, transaction = await safe_set_status_for_transaction_obj_with_retries(
         celery_task, started_at, kwargs, timeout,
@@ -440,4 +471,4 @@ async def process_payment_background_workflow[**P,R](
     elif new_status == TransactionStatus.CANCELLED:
         cleanup_logger.info(f"Транзакция {transaction_id} помечена CANCELLED на удаление")
 
-    return True
+    return True, f"set status {new_status} for transaction {transaction_id}"

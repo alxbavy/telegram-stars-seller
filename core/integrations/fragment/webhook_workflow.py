@@ -19,7 +19,7 @@ async def update_fragment_transaction_workflow[**P,R](
         new_status: str,
         *,
         started_at: float
-) -> bool:
+) -> tuple[bool, str]:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -38,12 +38,17 @@ async def update_fragment_transaction_workflow[**P,R](
             fragment_tx_id, transaction_id, new_status
         )
         if transaction is None:
-            return False
+            return False, f"fragment transaction {fragment_tx_id} not found and is not recreated"
 
     if transaction.status == new_status:
-        return True
+        return True, f"fragment transaction {fragment_tx_id} is already {new_status}"
 
-    return await safe_set_status_for_fragment_tx_id_with_retries(
+    is_changed = await safe_set_status_for_fragment_tx_id_with_retries(
         celery_task, started_at, kwargs, timeout,
         fragment_tx_id, new_status
     )
+
+    if is_changed:
+        return True, f"fragment transaction {fragment_tx_id} set status to {new_status}"
+
+    return False, f"fragment transaction {fragment_tx_id} is not changed status from {transaction.status} to {new_status}"

@@ -4,13 +4,14 @@ import time
 import logging
 from uuid import UUID
 
+from asgiref.sync import async_to_sync
 from celery import shared_task, Task
 
 from core.integrations.fragment.webhook_workflow import update_fragment_transaction_workflow
 from core.integrations.webhook_utils import ServicesNames
 from core.services.redis_service import (
     get_and_del_by_key, save_status_by_key,
-    get_lock_or_retry, get_lock_fragment_transaction, execute_critical_section_with_lock
+    get_lock_or_retry, get_lock_fragment_transaction
 )
 
 
@@ -24,8 +25,8 @@ def update_fragment_tx_task[**P, R](
         transaction_id: str,
         *,
         started_at: float | None
-) -> None:
-    async def critical_section() -> None:
+) -> str:
+    async def critical_section() -> str:
         nonlocal started_at
         if started_at is None:
             started_at = time.time()
@@ -44,19 +45,18 @@ def update_fragment_tx_task[**P, R](
             new_status = status_from_creation
 
         else:
-            debug_msg = (
+            return (
                 f"New status for fragment transaction {fragment_tx_id} (platega {transaction_id}) was already processed"
             )
-            logger.debug(debug_msg)
-            return None
 
         is_success: bool = False
         try:
-            is_success = await update_fragment_transaction_workflow(
+            is_success, msg = await update_fragment_transaction_workflow(
                 self, UUID(fragment_tx_id), UUID(transaction_id),
                 new_status,
                 started_at=started_at
             )
+            return msg
 
         finally:
             if not is_success:
@@ -73,4 +73,8 @@ def update_fragment_tx_task[**P, R](
                     )
 
     lock = get_lock_or_retry(self, get_lock_fragment_transaction(transaction_id))
-    return execute_critical_section_with_lock(critical_section, lock)
+
+    try:
+        return async_to_sync(critical_section)()
+    finally:
+        lock.release()

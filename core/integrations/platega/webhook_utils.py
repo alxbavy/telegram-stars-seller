@@ -170,10 +170,10 @@ async def safe_update_transaction_payload_with_retries[**P,R](
         )
 
 
-async def safe_create_fragment_transaction_if_not_sent_with_retries[**P,R](
+async def create_fragment_transaction_if_not_sent_with_retries[**P, R](
         celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float,
         transaction: Transaction
-) -> tuple[SendStarsResponse | None, str]:
+) -> tuple[SendStarsResponse, str]:
     """
     При ошибке возвращает текст ошибки вторым аргументом.
 
@@ -191,7 +191,7 @@ async def safe_create_fragment_transaction_if_not_sent_with_retries[**P,R](
                 f"{payment_service.create_fragment_transaction.__qualname__}"
             )
             if timeout_err is not None:
-                return None, str(timeout_err)
+                raise timeout_err
 
             try:
                 response_or_transaction: SendStarsResponse | Transaction = await payment_service.create_fragment_transaction(
@@ -226,14 +226,18 @@ async def safe_create_fragment_transaction_if_not_sent_with_retries[**P,R](
                 )
 
             except Exception as exc:
-                return None, str(exc)
+                logger.exception(f"{exc.__class__.__name__} - {str(exc)}")
+                raise exc
 
             if isinstance(response_or_transaction, Transaction):
                 err_msg = f"Попытка отправки звёзд по транзакции {response_or_transaction.id} уже была"
-                logger.warning(err_msg)
-                return None, err_msg
+                exc = RuntimeError(err_msg)
+                logger.exception(f"{exc.__class__.__name__} - {str(exc)}")
+                raise exc
 
-            status = cast(FragmentStatus, response_or_transaction["status"])
+            response = response_or_transaction
+
+            status = cast(FragmentStatus, response["status"])
 
             if status in (
                     FragmentStatus.CREATED, FragmentStatus.PENDING,
@@ -243,17 +247,17 @@ async def safe_create_fragment_transaction_if_not_sent_with_retries[**P,R](
 
             elif status == FragmentStatus.FAILED:
                 err_msg = (
-                    f"При попытке отправить звёзды fragment-api вернул статус FAILED, текст ошибки: {response_or_transaction['error']}"
+                    f"При попытке отправить звёзды fragment-api вернул статус FAILED, текст ошибки: {response['error']}"
                 )
 
             else:
                 err_msg = "fragment-api вернул неизвестный статус"
 
-            return response_or_transaction, err_msg
+            return response, err_msg
 
-    except Exception as err:
-        logger.exception(f"Error trying send stars:\n{err = }")
-        return None, f"{err.__class__.__name__}: {err}"
+    except Exception as exc:
+        logger.exception(f"Error trying send stars:\n{exc.__class__.__name__} - {exc}")
+        raise exc
 
 
 async def safe_telegram_action_with_retries[**P,TR,CR](

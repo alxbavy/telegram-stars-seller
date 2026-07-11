@@ -20,11 +20,11 @@ celery_settings = app.config_from_object("django.conf:settings", namespace="CELE
 app.conf.beat_schedule = {
     "daily-check-clean-two-week-cancelled-transactions": {
         "task": "core.tasks.periodic.transactions.cleanup_two_week_cancelled_transactions_task",
-        "schedule": crontab(hour=2, minute=0), # Каждый день в 02:00
+        "schedule": crontab(hour=2, minute=0),  # Каждый день в 02:00
     },
     "daily-check-deactivate-unused-promo-codes": {
         "task": "core.tasks.periodic.promo_codes.deactivate_unused_promo_codes_task",
-        "schedule": crontab(hour=2, minute=30),
+        "schedule": crontab(hour=2, minute=30),  # Каждый день в 02:30
     }
 }
 

@@ -10,7 +10,7 @@ from django.http import HttpRequest, HttpResponse
 
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.fragment.tasks import update_fragment_tx_task
-from core.integrations.platega.tasks import process_payment_background_task
+from core.integrations.platega.tasks import update_transaction_status_task
 from core.integrations.webhook_utils import (
     ServicesNames,
     access_granted_or_http_response,
@@ -76,7 +76,7 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
                 args=(fragment_tx_id, transaction_id),
                 kwargs={"started_at": None}
             )
-        _ = process_payment_background_task.apply_async(
+        _ = update_transaction_status_task.apply_async(
             args=(str(transaction_uuid), parsed_payload, payment_method),
             kwargs={"started_at": None}
         )

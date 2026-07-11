@@ -1,5 +1,7 @@
 import os
+import asyncio
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import final, override
 
@@ -55,6 +57,10 @@ class Command(BaseCommand):
             commands.append(BotCommand("prices", user_warning))
             commands.append(BotCommand("prices_debug", user_warning))
         _ = await application.bot.set_my_commands(commands)
+
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
+        self.stdout.write("Бот: ThreadPoolExecutor расширен до 50 потоков.")
 
     async def post_stop(self, application: DefaultApplication) -> None:
         self.stdout.write("Bot is stopping, closing dishka container...")

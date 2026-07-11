@@ -8,8 +8,10 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 """
 
 import os
+import asyncio
 import logging
-from typing import Any, Callable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
 from collections.abc import Coroutine
 
 from django.conf import settings
@@ -30,16 +32,20 @@ static_app = BlackNoise(django_asgi_application)
 static_app.add(settings.BASE_DIR / "static", "/static")
 
 
-AsgiMessage = dict[str, Any]
-AsgiReceive = Callable[[], Coroutine[Any, Any, AsgiMessage]]
-AsgiSend = Callable[[AsgiMessage], Coroutine[Any, Any, None]]
+AsgiMessage = dict[str, object]
+AsgiReceive = Callable[[], Coroutine[object, object, AsgiMessage]]
+AsgiSend = Callable[[AsgiMessage], Coroutine[object, object, None]]
 
-async def application(scope: dict[str, Any], receive: AsgiReceive, send: AsgiSend) -> None:
+async def application(scope: dict[str, object], receive: AsgiReceive, send: AsgiSend) -> None:
     if scope['type'] == 'lifespan':
         while True:
             message = await receive()
 
             if message['type'] == 'lifespan.startup':
+                loop = asyncio.get_running_loop()
+                loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
+                logger.info("Server: ThreadPoolExecutor extended to 50 workers.")
+
                 await send({'type': 'lifespan.startup.complete'})
 
             elif message['type'] == 'lifespan.shutdown':

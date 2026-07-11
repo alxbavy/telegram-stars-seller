@@ -4,9 +4,8 @@ import random
 import logging
 from uuid import UUID
 from typing import Protocol, cast
-from collections.abc import Sequence, Callable, Awaitable
+from collections.abc import Sequence
 
-from asgiref.sync import async_to_sync
 from django.conf import settings
 
 from redis import from_url  # noqa
@@ -116,16 +115,3 @@ def get_lock_or_retry[**P,R](
         raise celery_task.retry(countdown=base_delay + jitter, max_retries=None)
 
     return lock
-
-
-def execute_critical_section_with_lock[R](critical_section: Callable[[], Awaitable[R]], lock: Lock) -> R:
-    try:
-        return async_to_sync(critical_section)()
-
-    finally:
-        try:
-            lock.release()
-
-        except Exception as exc:
-            logger.exception(f"{exc.__class__.__name__} - {str(exc)}")
-            pass

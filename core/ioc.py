@@ -1,6 +1,6 @@
 import httpx
 from typing import final
-from collections.abc import Callable, AsyncIterable
+from collections.abc import Callable, Iterable
 
 from dishka import AsyncContainer, Provider, Scope, provide, make_async_container
 from dishka.integrations.base import wrap_injection
@@ -42,14 +42,14 @@ class BusinessLogicProvider(Provider):
     user_service = provide(UserService, scope=Scope.APP)
 
     @provide(scope=Scope.APP)
-    async def platega_client(self) -> AsyncIterable[PlategaClient]:
-        async with httpx.AsyncClient(timeout=PLATEGA_TIMEOUT, limits=PLATEGA_LIMITS) as client:
+    def platega_client(self) -> Iterable[PlategaClient]:
+        with httpx.Client(timeout=PLATEGA_TIMEOUT, limits=PLATEGA_LIMITS) as client:
             yield PlategaClient(client)
             # Код после yield выполняется при вызове container.close()
 
     @provide(scope=Scope.APP)
-    async def fragment_client(self, fragment_tx_service: FragmentTransactionService) -> AsyncIterable[FragmentClient]:
-        async with httpx.AsyncClient(timeout=FRAGMENT_TIMEOUT, limits=FRAGMENT_LIMITS) as client:
+    def fragment_client(self, fragment_tx_service: FragmentTransactionService) -> Iterable[FragmentClient]:
+        with httpx.Client(timeout=FRAGMENT_TIMEOUT, limits=FRAGMENT_LIMITS) as client:
             yield FragmentClient(client, fragment_tx_service)
             # Код после yield выполняется при вызове container.close()
 

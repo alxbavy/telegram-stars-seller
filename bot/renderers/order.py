@@ -19,6 +19,7 @@ from bot.utils.active_conversation import autosave_active_conversation, autosave
 from bot.utils.injector import inject_without_context
 from bot.enums import BackDestination
 from bot.utils.string_helpers import WordCase, get_ending_for_digit_string
+from core.dto.payment import PaymentMethodDTO
 from core.models import PromoCode
 
 from core.repositories.utils import db_action_with_tenacity
@@ -117,7 +118,6 @@ async def show_payment_methods_dynamic(
         )
 
     is_gift = (True if username else False)
-
     if is_gift:
         text = (
             f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}"
@@ -130,28 +130,32 @@ async def show_payment_methods_dynamic(
         back_dest = BackDestination.CHOOSE_RECIPIENT
         photo = "payment_method_self.jpg"
 
+    # TODO: сделать отдельный middleware для получения методов с ценами (надо сначала переделать все inject)
+    discount = 1 - (active_promo.discount / 100) if active_promo is not None else Decimal("1.00")
+    payment_methods_with_prices: list[tuple[PaymentMethodDTO, Decimal]] = [
+        (method, round(await db_action_with_tenacity(
+            star_service.get_order_price(stars_count, method.commission_percent)
+        ) * discount, 2)) for method in await db_action_with_tenacity(payment_service.get_active_payment_methods())
+    ]
+
     return await render_screen(
         update, text,
-        await build_payment_methods_kb_dynamic(
-            stars_count, payment_service, star_service, active_promo, back_dest
-        ),
+        await build_payment_methods_kb_dynamic(payment_methods_with_prices, back_dest),
         photo
     )
 
 
 def _get_promo_and_price_sentences(price: Decimal, promo_name: str, promo_discount: Decimal | None) -> tuple[str, str]:
-    display_price = price
     promo_sentence = ""
     promo_remark = ""
 
     if promo_name and promo_discount is not None:
-        display_price = price * (1 - promo_discount / 100)
         promo_sentence = (
             f"🎟️ Активен промокод <b>{promo_name}</b> на скидку <b>{promo_discount:.2f}%</b>\n"
         )
         promo_remark = " (со скидкой)"
 
-    price_sentence = f"Стоимость — {display_price:.2f} ₽{promo_remark}\n"
+    price_sentence = f"Стоимость — {price:.2f} ₽{promo_remark}\n"
 
     return promo_sentence, price_sentence
 

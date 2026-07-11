@@ -7,6 +7,8 @@ from typing import cast
 
 from celery import Task
 
+from telegram import Message
+
 from core.integrations.platega.webhook_utils import (
     safe_get_transaction_with_retries,
     safe_notify_user_about_status_with_retries,
@@ -32,7 +34,7 @@ async def update_order_message_workflow[**P,R](
         promo_name: str, promo_discount: str | None,
         *,
         started_at: float
-) -> None:
+) -> str:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
     kwargs["started_at"] = started_at
 
@@ -50,7 +52,7 @@ async def update_order_message_workflow[**P,R](
     if promo_discount is not None:
         promo_discount_decimal = Decimal(promo_discount)
 
-    _ = await safe_notify_user_about_status_with_retries(
+    result = await safe_notify_user_about_status_with_retries(
         celery_task, started_at,
         bot, parse_mode,
         user_id, message_id, status, str(transaction_id),
@@ -58,3 +60,16 @@ async def update_order_message_workflow[**P,R](
         target_username, pay_url, is_gift, promo_name, promo_discount_decimal,
         timeout=timeout
     )
+
+    if isinstance(result, Exception):
+        return str(result)
+
+    if isinstance(result, Message):
+        return f"message for transaction {transaction_id} is updated"
+
+    if isinstance(result, bool):
+        if result:
+            return f"message for transaction {transaction_id} is updated"
+        return f"message for transaction {transaction_id} is failed to update"
+
+    return str(result)

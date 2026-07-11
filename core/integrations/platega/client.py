@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import re
 import logging
@@ -30,7 +31,7 @@ PLATEGA_WEBHOOK = "platega_webhook"
 class PlategaClient:
     PAYMENT_WITH_METHOD_PATH = "transaction/process"
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(self, client: httpx.Client) -> None:
         self.url = cast(str, getattr(settings, "PLATEGA_API_URL", None))  # noqa
         self.merchant_id = cast(str, getattr(settings, "PLATEGA_MERCHANT_ID", None))  # noqa
         self.secret = cast(str, getattr(settings, "PLATEGA_SECRET", None))  # noqa
@@ -145,16 +146,18 @@ class PlategaClient:
         full_url = urljoin(self.url, path)
         timeout_conf = create_new_timeout_conf_or_use_default(timeout, connect, TIMEOUT)
 
-        try:
+        def do_sync_request() -> httpx.Response:
             if method == "POST":
-                response = await self._client.post(
+                return self._client.post(
                     full_url,
                     json=data, headers=headers,
                     timeout=timeout_conf
                 )
 
-            else:
-                response = await self._client.get(full_url, headers=headers, timeout=timeout_conf)
+            return self._client.get(full_url, headers=headers, timeout=timeout_conf)
+
+        try:
+                response = await asyncio.to_thread(do_sync_request)
 
         except (*SAFE_TO_RETRY, ) as exc:
             err_msg = "Произошла ошибка соединения при обращении к Platega"

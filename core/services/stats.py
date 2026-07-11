@@ -1,3 +1,4 @@
+from math import ceil
 from typing import final
 
 from core.domain.enums import TransactionStatus
@@ -45,7 +46,7 @@ class StatsService:
             status=TransactionStatus.SUCCESS,
             is_count_only=True,
         )
-        total_pages: int = total_transactions_count // per_page + 1
+        total_pages: int = ceil(total_transactions_count / per_page)
 
         return OrderHistoryPageDTO(
             items=items_dto,

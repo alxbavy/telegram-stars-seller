@@ -1,5 +1,7 @@
 from typing import cast
 
+from dishka import FromDishka
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -16,7 +18,6 @@ from bot.renderers.profile import show_profile_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.handlers_registry import build_async_handlers_register
-from bot.utils.injector import inject
 from bot.utils.type_aliases import UpdateWithContextHandler
 
 from bot.callbacks import BackCallback, cast_callback
@@ -26,6 +27,7 @@ from bot.states import BotConversationState
 
 from core.repositories.utils import db_action_with_tenacity
 from core.services.user import UserService
+from core.ioc import inject
 
 
 back_destination_registry: dict[BackDestination, UpdateWithContextHandler[..., BotConversationState]] = {}
@@ -85,7 +87,8 @@ async def _handle_destination_choose_payment(update: Update, context: ContextTyp
 @inject
 async def _handle_destination_profile(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        user_service: UserService
+        *,
+        user_service: FromDishka[UserService]
 ):
     ctx = get_view_context(context)
     profile_data = ctx.profile_data

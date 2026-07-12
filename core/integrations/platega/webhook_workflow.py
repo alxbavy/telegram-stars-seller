@@ -3,9 +3,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 from decimal import Decimal
-from typing import cast
-
-from celery import Task
+from typing import cast, ParamSpec, TypeVar
 
 from telegram import Message
 
@@ -15,12 +13,17 @@ from core.integrations.platega.webhook_utils import (
 )
 from core.domain.enums import TransactionStatus
 from core.services.tg_bot import bot
+from core.tasks import Task
 
 
 logger = logging.getLogger(__name__)
 
 
-async def update_order_message_workflow[**P,R](
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+async def update_order_message_workflow(
         celery_task: Task[P,R],
         parse_mode: str,
         user_id: int,

@@ -1,3 +1,7 @@
+from typing import overload, Literal
+
+from dishka import FromDishka
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -5,7 +9,6 @@ from bot.renderers.profile import show_order_history_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.handlers_registry import build_async_handlers_register
-from bot.utils.injector import inject
 from bot.utils.type_aliases import UpdateWithContextHandler
 
 from bot.callbacks import HistoryPageCallback, cast_callback, ProfileMenuCallback
@@ -14,6 +17,7 @@ from bot.states import BotConversationState
 
 from core.repositories.utils import db_action_with_tenacity
 from core.services.stats import StatsService
+from core.ioc import inject
 
 
 profile_registry: dict[ProfileAction, UpdateWithContextHandler[..., BotConversationState]] = {}
@@ -24,7 +28,8 @@ register = build_async_handlers_register(profile_registry)
 @inject
 async def _handle_profile_action_history(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        stats_service: StatsService
+        *,
+        stats_service: FromDishka[StatsService]
 ):
     history_dto = await db_action_with_tenacity(
         stats_service.get_order_history(update.effective_user.id, page=1)
@@ -40,11 +45,18 @@ async def handle_profile_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await handler(update, context)
 
 
+@overload
+async def _handle_history_pagination_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ORDER_HISTORY]: ...
+
+
 @inject
 async def _handle_history_pagination_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        stats_service: StatsService
-):
+        *,
+        stats_service: FromDishka[StatsService]
+) -> Literal[BotConversationState.ORDER_HISTORY]:
     cb_data = cast_callback(HistoryPageCallback, update.callback_query.data)
 
     history_dto = await db_action_with_tenacity(
@@ -55,5 +67,7 @@ async def _handle_history_pagination_helper(
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_history_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_history_pagination(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ORDER_HISTORY]:
     return await _handle_history_pagination_helper(update, context)

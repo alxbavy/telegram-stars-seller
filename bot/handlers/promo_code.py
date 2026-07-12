@@ -1,5 +1,7 @@
 import logging
-from typing import cast
+from typing import Literal, cast, overload
+
+from dishka import FromDishka
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -14,7 +16,6 @@ from bot.renderers.promo_code import (
 )
 from bot.states import BotConversationState
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
-from bot.utils.injector import inject
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 
@@ -24,17 +25,24 @@ from core.services.promo_code import PromoCodeService
 from core.services.transaction import TransactionService
 from core.services.redis_service import get_lock_promo_input_processing, acquire_lock
 from core.services.user import UserService
+from core.ioc import inject
 
 
 logger = logging.getLogger(__name__)
+
+
+@overload
+async def _handle_promo_input_request_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]: ...
 
 
 @inject
 async def _handle_promo_input_request_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: PromoCodeService
-):
+        promo_service: FromDishka[PromoCodeService]
+) -> Literal[BotConversationState.ENTER_PROMO]:
     ctx = get_view_context(context)
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
@@ -44,15 +52,24 @@ async def _handle_promo_input_request_helper(
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_promo_input_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_promo_input_request(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]:
     return await _handle_promo_input_request_helper(update, context)
+
+
+@overload
+async def _handle_promo_code_cancel_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]: ...
 
 
 @inject
 async def _handle_promo_code_cancel_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        user_service: UserService, promo_service: PromoCodeService
-):
+        *,
+        user_service: FromDishka[UserService], promo_service: FromDishka[PromoCodeService]
+) -> Literal[BotConversationState.ENTER_PROMO]:
     _ = await db_action_with_tenacity(
         user_service.update_active_promo(update.effective_user.id, None)
     )
@@ -67,18 +84,26 @@ async def _handle_promo_code_cancel_helper(
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_promo_code_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_promo_code_cancel(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]:
     return await _handle_promo_code_cancel_helper(update, context)
+
+
+@overload
+async def _handle_enter_promo_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]: ...
 
 
 @inject
 async def _handle_enter_promo_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: PromoCodeService,
-        trans_service: TransactionService,
-        user_service: UserService
-):
+        promo_service: FromDishka[PromoCodeService],
+        trans_service: FromDishka[TransactionService],
+        user_service: FromDishka[UserService]
+) -> Literal[BotConversationState.ENTER_PROMO]:
     promo_name = cast(str, update.message.text)  # noqa
     found_promo = await db_action_with_tenacity(
         promo_service.get_promo_by_name(promo_name)
@@ -164,5 +189,7 @@ async def _handle_enter_promo_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
-async def handle_enter_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_enter_promo(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_PROMO]:
     return await _handle_enter_promo_helper(update, context)

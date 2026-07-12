@@ -1,7 +1,11 @@
 from decimal import Decimal
 from uuid import UUID
+from typing import overload
+
+from dishka import FromDishka
 
 from telegram import Update, Message
+from telegram.ext import ContextTypes
 
 from bot.keyboards.main import build_back_to_main_menu_kb
 from bot.renderers.base import render_screen, update_existing_message
@@ -15,17 +19,17 @@ from bot.keyboards.order import (
     build_payment_methods_kb_dynamic,
     build_order_confirmation_kb, build_order_confirmed_kb
 )
-from bot.utils.active_conversation import autosave_active_conversation, autosave_active_conversation_with_context
-from bot.utils.injector import inject_without_context
+from bot.utils.active_conversation import autosave_active_conversation
 from bot.enums import BackDestination
 from bot.utils.string_helpers import WordCase, get_ending_for_digit_string
+
 from core.dto.payment import PaymentMethodDTO
 from core.models import PromoCode
-
 from core.repositories.utils import db_action_with_tenacity
 from core.services.payment import PaymentService
 from core.services.promo_code import PromoCodeService
 from core.services.star_price import StarService
+from core.ioc import inject
 
 
 @autosave_active_conversation
@@ -98,14 +102,24 @@ async def show_payment_methods_static(
     return await render_screen(update, text, build_payment_methods_kb_static(sbp_price, card_price, back_dest), photo)
 
 
-@autosave_active_conversation_with_context
-@inject_without_context
+@overload
+async def show_payment_methods_dynamic(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        stars_count: int,
+        username: str = ""
+) -> Message: ...
+
+
+@autosave_active_conversation
+@inject
 async def show_payment_methods_dynamic(
         update: Update,
         stars_count: int,
         username: str = "",
         *,
-        promo_service: PromoCodeService, payment_service: PaymentService, star_service: StarService
+        promo_service: FromDishka[PromoCodeService],
+        payment_service: FromDishka[PaymentService],
+        star_service: FromDishka[StarService]
 ) -> Message:
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)

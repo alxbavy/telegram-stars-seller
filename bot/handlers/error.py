@@ -4,22 +4,24 @@ import json
 import pickle
 from dataclasses import is_dataclass, asdict
 from decimal import Decimal
-from typing import override
+from typing import override, overload
+
+from httpx import ConnectError
+
+from dishka import FromDishka
 
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
 
 from bot.keyboards.error import KeyboardMethodError, build_support_kb
-
 from bot.renderers.base import delete_message, send_new_message
-from bot.utils.injector import inject
-
 from bot.context import get_view_context
 
 from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITemporaryError, FragmentAPITooManyRequests
 from core.integrations.platega.errors import PlategaAPIError
 from core.services.payment import MaintenanceModeException, NoUsernameError
 from core.services.support import SupportService
+from core.ioc import inject
 
 
 logger = logging.getLogger(__name__)
@@ -32,11 +34,21 @@ class DataclassEncoder(json.JSONEncoder):
             return asdict(o)  # noqa
         if isinstance(o, Decimal):
             return str(o)
-        return super().default(o)
+        return super().default(o)  # pyright: ignore[reportAny]
+
+
+@overload
+async def error_handler(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: object | None, context: ContextTypes.DEFAULT_TYPE
+) -> None: ...
 
 
 @inject
-async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYPE, support_service: SupportService) -> None:
+async def error_handler(
+        update: object | None, context: ContextTypes.DEFAULT_TYPE,
+        *,
+        support_service: FromDishka[SupportService]
+) -> None:
     logger.error("Произошло исключение при обработке обновления:", exc_info=context.error)
 
     tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
@@ -116,6 +128,14 @@ async def error_handler(update: object | None, context: ContextTypes.DEFAULT_TYP
         text = (
             "⚠️ <b>Структура меню обновилась...</b>\n\n"
             "Начни заказ снова с помощью /start или обратись в тех. поддержку, если ошибка останется"
+        )
+
+    elif isinstance(context.error, ConnectError):
+        text = (
+            "⚠️ <b>Что-то произошло с соединением...</b>\n\n"
+            "Можешь повторить последнее действие\n\n"
+            "Либо начни новый заказ — /start\n"
+            "Если ошибка останется, обратись в тех. поддержку"
         )
 
     else:

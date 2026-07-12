@@ -1,34 +1,54 @@
-from typing import cast
 from uuid import UUID
+from typing import cast, overload
+
+from dishka import FromDishka
 
 from telegram.ext import ContextTypes
 
-from bot.utils.injector import inject_without_update
-
 from core.services.transaction import TransactionService
+from core.ioc import inject
 
 
 # Все методы здесь устаревшие и пока не предполагается их использовать. Очистка делегирована в Celery, и только
 # для транзакций со статусом CANCELLED
 
 
-@inject_without_update
-async def _clear_expired_transactions_helper(context: ContextTypes.DEFAULT_TYPE, trans_service: TransactionService) -> None:
+@overload
+async def _clear_expired_transactions_helper() -> None: ...  # noqa  # pyright: ignore[reportInconsistentOverload]
+
+
+@inject
+async def _clear_expired_transactions_helper(*, trans_service: FromDishka[TransactionService]) -> None:
     await trans_service.delete_expired_transactions()
 
 
-async def clear_expired_transactions(context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _clear_expired_transactions_helper(context)
+async def clear_expired_transactions(_: ContextTypes.DEFAULT_TYPE) -> None:
+    await _clear_expired_transactions_helper()
 
 
-@inject_without_update
-async def _clear_specific_transaction_helper(context: ContextTypes.DEFAULT_TYPE, trans_service: TransactionService) -> None:
+@overload
+async def _clear_specific_transaction_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        context: ContextTypes.DEFAULT_TYPE
+) -> None: ...
+
+
+@inject
+async def _clear_specific_transaction_helper(
+        context: ContextTypes.DEFAULT_TYPE,
+        *,
+        trans_service: FromDishka[TransactionService]
+) -> None:
     """Смотрите документацию для `clear_specific_transaction` для подробностей."""
-    transaction_id, expires_in = cast(tuple[UUID, str], context.job.data)
-    if not isinstance(transaction_id, UUID):
-        raise ValueError("transaction_id must be UUID")
-    if not isinstance(expires_in, str):
-        raise ValueError("expires_in must be str with format HH:MM:SS")
+    job_data = context.job.data
+    if not isinstance(job_data, tuple):
+        raise ValueError("context.job.data must be tuple")
+
+    if not isinstance(job_data[0], UUID):
+        raise ValueError("context.job.data[0] must be UUID")
+    if not isinstance(job_data[1], str):
+        raise ValueError("context.job.data[1] must be str with format HH:MM:SS")
+    transaction_id, expires_in = cast(tuple[UUID, str], job_data)
+
     await trans_service.delete_transactions_expires_in(expires_in, transaction_id)
 
 

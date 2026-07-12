@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 import logging
 from uuid import UUID
+from typing import ParamSpec, TypeVar
 
 from asgiref.sync import async_to_sync
-from celery import shared_task, Task
+from celery import shared_task
 
 from core.integrations.fragment.webhook_workflow import update_fragment_transaction_workflow
 from core.integrations.webhook_utils import ServicesNames
@@ -13,13 +14,18 @@ from core.services.redis_service import (
     get_and_del_by_key, save_status_by_key,
     get_lock_or_retry, get_lock_fragment_transaction
 )
+from core.tasks import Task
 
 
 logger = logging.getLogger(__name__)
 
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
 @shared_task(bind=True, max_retries=100)
-def update_fragment_tx_task[**P, R](
+def update_fragment_tx_task(
         self: Task[P,R],
         fragment_tx_id: str,
         transaction_id: str,

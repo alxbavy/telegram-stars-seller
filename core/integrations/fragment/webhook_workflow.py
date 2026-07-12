@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from uuid import UUID
-from typing import cast
-
-from celery import Task
+from typing import cast, ParamSpec, TypeVar
 
 from core.integrations.fragment.enums import FragmentStatus
 from core.integrations.fragment.webhook_utils import (
@@ -11,9 +9,14 @@ from core.integrations.fragment.webhook_utils import (
     safe_create_fragment_tx_with_retries,
     safe_set_status_for_fragment_tx_id_with_retries
 )
+from core.tasks import Task
 
 
-async def update_fragment_transaction_workflow[**P,R](
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+async def update_fragment_transaction_workflow(
         celery_task: Task[P,R],
         fragment_tx_id: UUID, transaction_id: UUID,
         new_status: str,

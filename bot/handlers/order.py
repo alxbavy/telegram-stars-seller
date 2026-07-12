@@ -3,7 +3,9 @@ import logging
 from decimal import Decimal
 from datetime import datetime, timedelta
 from math import ceil
-from typing import cast
+from typing import Literal, cast, overload
+
+from dishka import FromDishka
 
 from telegram import Update, Message
 from telegram.ext import ContextTypes
@@ -11,7 +13,6 @@ from telegram.ext import ContextTypes
 from bot.keyboards.error import KeyboardMethodError
 from bot.renderers.base import delete_message
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
-from bot.utils.injector import inject
 
 from bot.handlers.start import running_users
 
@@ -42,13 +43,16 @@ from core.services.promo_code import PromoCodeService
 from core.services.support import SupportService
 from core.services.transaction import TransactionService
 from core.services.user import UserService
+from core.ioc import inject
 
 
 logger = logging.getLogger(__name__)
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_fixed_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_fixed_quantity(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.CHOOSE_RECIPIENT]:
     cb_data = cast_callback(FixedQuantityCallback, update.callback_query.data)
     ctx = get_view_context(context)
     ctx.order.quantity = cb_data.amount
@@ -58,16 +62,33 @@ async def handle_fixed_quantity(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_custom_quantity_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_custom_quantity_btn(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.CUSTOM_QUANTITY_INPUT]:
     _ = await show_custom_quantity_input(update, context)
     return BotConversationState.CUSTOM_QUANTITY_INPUT
+
+
+@overload
+async def _handle_custom_quantity_input_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[
+    BotConversationState.CUSTOM_QUANTITY_INPUT,
+    BotConversationState.LARGE_ORDER_WARNING,
+    BotConversationState.CHOOSE_RECIPIENT
+]: ...
 
 
 @inject
 async def _handle_custom_quantity_input_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        support_service: SupportService
-):
+        *,
+        support_service: FromDishka[SupportService]
+) -> Literal[
+    BotConversationState.CUSTOM_QUANTITY_INPUT,
+    BotConversationState.LARGE_ORDER_WARNING,
+    BotConversationState.CHOOSE_RECIPIENT
+]:
     user_id = update.effective_user.id
     if user_id in running_users:
         return BotConversationState.CUSTOM_QUANTITY_INPUT
@@ -75,8 +96,7 @@ async def _handle_custom_quantity_input_helper(
     running_users.add(user_id)
 
     try:
-        # noinspection PyUnnecessaryCast
-        user_msg = cast(Message, update.message)
+        user_msg = cast(Message, update.message)  # noqa
 
         text = user_msg.text
         if text is None or not text.isdigit():
@@ -103,11 +123,19 @@ async def _handle_custom_quantity_input_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
-async def handle_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_custom_quantity_input(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[
+    BotConversationState.CUSTOM_QUANTITY_INPUT,
+    BotConversationState.LARGE_ORDER_WARNING,
+    BotConversationState.CHOOSE_RECIPIENT
+]:
     return await _handle_custom_quantity_input_helper(update, context)
 
 
-async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _handle_recipient_mode_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]:
     cb_data = cast_callback(RecipientModeCallback, update.callback_query.data)
     ctx = get_view_context(context)
 
@@ -116,8 +144,7 @@ async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DE
         # Нужно указывать пустым, так как сюда можно вернуться с предыдущих шагов, где он мог быть заполнен
         ctx.order.target_username = ""
 
-        # noinspection PyUnnecessaryCast
-        stars_count = cast(int, ctx.order.quantity)
+        stars_count = cast(int, ctx.order.quantity)  # noqa
         _ = await show_payment_methods_dynamic(update, context, stars_count, username=ctx.order.target_username)
         return BotConversationState.CHOOSE_PAYMENT_SELF
 
@@ -127,15 +154,24 @@ async def _handle_recipient_mode_helper(update: Update, context: ContextTypes.DE
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_recipient_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_recipient_mode(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]:
     return await _handle_recipient_mode_helper(update, context)
+
+
+@overload
+async def _handle_gift_username_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]: ...
 
 
 @inject
 async def _handle_gift_username_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        fragment_client: FragmentClient
-):
+        *,
+        fragment_client: FromDishka[FragmentClient]
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]:
     user_id = update.effective_user.id
     if user_id in running_users:
         return BotConversationState.ENTER_GIFT_USERNAME
@@ -145,8 +181,7 @@ async def _handle_gift_username_helper(
     try:
         user_msg = update.message
 
-        # noinspection PyUnnecessaryCast
-        username = cast(str, user_msg.text)
+        username = cast(str, user_msg.text)  # noqa
         username_pattern = re.compile(r"^@?[a-zA-Z][a-zA-Z0-9_]{2,31}$")
         if not username_pattern.search(username):
             return BotConversationState.ENTER_GIFT_USERNAME
@@ -168,8 +203,7 @@ async def _handle_gift_username_helper(
 
         ctx.order.target_username = username
 
-        # noinspection PyUnnecessaryCast
-        stars_count = cast(int, ctx.order.quantity)
+        stars_count = cast(int, ctx.order.quantity)  # noqa
         _ = await show_payment_methods_dynamic(update, context, stars_count, username=username)
         return BotConversationState.CHOOSE_PAYMENT_GIFT
 
@@ -178,15 +212,24 @@ async def _handle_gift_username_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
-async def handle_gift_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_gift_username(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]:
     return await _handle_gift_username_helper(update, context)
+
+
+@overload
+async def _handle_payment_method_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]: ...
 
 
 @inject
 async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        promo_service: PromoCodeService
-):
+        *,
+        promo_service: FromDishka[PromoCodeService]
+) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]:
     ctx = get_view_context(context)
     cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
 
@@ -217,17 +260,34 @@ async def _handle_payment_method_helper(
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_payment_method(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]:
     return await _handle_payment_method_helper(update, context)
+
+
+@overload
+async def _handle_order_confirmed_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[
+    BotConversationState.ORDER_CONFIRMATION_SELF,
+    BotConversationState.ORDER_CONFIRMATION_GIFT,
+    BotConversationState.ORDER_CONFIRMED
+]: ...
 
 
 @inject
 async def _handle_order_confirmed_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
-        fragment_client: FragmentClient, payment_service: PaymentService,
-        transaction_service: TransactionService, promo_service: PromoCodeService,
-        user_service: UserService, support_service: SupportService
-):
+        *,
+        fragment_client: FromDishka[FragmentClient], payment_service: FromDishka[PaymentService],
+        transaction_service: FromDishka[TransactionService], promo_service: FromDishka[PromoCodeService],
+        user_service: FromDishka[UserService], support_service: FromDishka[SupportService]
+) -> Literal[
+    BotConversationState.ORDER_CONFIRMATION_SELF,
+    BotConversationState.ORDER_CONFIRMATION_GIFT,
+    BotConversationState.ORDER_CONFIRMED
+]:
     ctx = get_view_context(context)
 
     is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
@@ -350,5 +410,11 @@ async def _handle_order_confirmed_helper(
 
 
 @ensure_use_active_conversation_with_callback
-async def handle_order_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_order_confirmed(
+        update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[
+    BotConversationState.ORDER_CONFIRMATION_SELF,
+    BotConversationState.ORDER_CONFIRMATION_GIFT,
+    BotConversationState.ORDER_CONFIRMED
+]:
     return await _handle_order_confirmed_helper(update, context)

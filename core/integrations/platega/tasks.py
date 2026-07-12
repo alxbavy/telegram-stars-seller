@@ -3,9 +3,9 @@ from __future__ import annotations
 import time
 import logging
 from uuid import UUID
-from typing import cast
+from typing import cast, ParamSpec, TypeVar
 
-from celery import shared_task, Task
+from celery import shared_task
 
 from asgiref.sync import async_to_sync
 
@@ -30,6 +30,7 @@ from core.services.redis_service import (
     get_lock_payment_transaction, get_lock_payment_message_polling,
     get_and_del_by_key, save_status_by_key,
 )
+from core.tasks import Task
 from core.models import TARGET_SELF
 
 
@@ -37,8 +38,12 @@ logger = logging.getLogger(__name__)
 cleanup_logger = logging.getLogger("cleanup_audit")
 
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def update_transaction_status_task[**P,R](
+def update_transaction_status_task(
         self: Task[P,R],
         transaction_id: str,
         parsed_payload: PaymentPayloadDict | None,
@@ -116,7 +121,7 @@ def update_transaction_status_task[**P,R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def update_order_message_task[**P,R](
+def update_order_message_task(
         self: Task[P,R],
         parse_mode: str,
         user_id: int,
@@ -166,7 +171,7 @@ def update_order_message_task[**P,R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def update_transaction_payload_task[**P,R](
+def update_transaction_payload_task(
         self: Task[P,R],
         transaction_id: str,
         new_payload: dict[str, object],
@@ -189,7 +194,7 @@ def update_transaction_payload_task[**P,R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def prepare_send_stars_task[**P,R](
+def prepare_send_stars_task(
         self: Task[P,R],
         transaction_id: str,
         parsed_payload: PaymentPayloadDict | None,
@@ -219,7 +224,7 @@ def prepare_send_stars_task[**P,R](
 
 
 @shared_task(bind=True, max_retries=100)
-def send_stars_task[**P,R](
+def send_stars_task(
         self: Task[P,R],
         transaction_id: str,
         parsed_payload: PaymentPayloadDict | None,
@@ -248,7 +253,7 @@ def send_stars_task[**P,R](
         lock.release()
 
 
-async def prepare_send_stars_workflow[**P,R](
+async def prepare_send_stars_workflow(
         celery_task: Task[P,R],
         transaction_id: UUID,
         parsed_payload: PaymentPayloadDict | None,
@@ -290,7 +295,7 @@ async def prepare_send_stars_workflow[**P,R](
     return f"sent send_stars_task for transaction {transaction_id}"
 
 
-async def send_stars_workflow[**P,R](
+async def send_stars_workflow(
         celery_task: Task[P,R],
         transaction_id: UUID,
         parsed_payload: PaymentPayloadDict | None,
@@ -369,7 +374,7 @@ async def send_stars_workflow[**P,R](
     return result_msg
 
 
-async def update_transaction_payload_workflow[**P,R](
+async def update_transaction_payload_workflow(
         celery_task: Task[P,R],
         transaction_id: UUID,
         new_payload: dict[str, object],
@@ -403,7 +408,7 @@ async def update_transaction_payload_workflow[**P,R](
     return f"updated payload for transaction {transaction_id}"
 
 
-async def update_transaction_status_workflow[**P, R](
+async def update_transaction_status_workflow(
         celery_task: Task[P,R],
         transaction_id: UUID,
         new_status: str,

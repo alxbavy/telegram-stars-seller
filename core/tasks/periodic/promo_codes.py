@@ -3,20 +3,25 @@ from __future__ import annotations
 import time
 import logging
 from datetime import timedelta
-from typing import cast
+from typing import cast, ParamSpec, TypeVar
 
-from celery import shared_task, Task
+from celery import shared_task
 
 from django.utils import timezone
 
 from core.repositories.utils import safe_db_action_sync_with_retries_celery
+from core.tasks.utils import Task
 from core.models import TelegramUser
 
 
 logger = logging.getLogger(__name__)
 
 
-def _deactivate_unused_promo_codes[**P,R](
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _deactivate_unused_promo_codes(
         celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float
 ) -> int | None:
     one_day_ago = timezone.now() - timedelta(days=1)
@@ -34,7 +39,7 @@ def _deactivate_unused_promo_codes[**P,R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def deactivate_unused_promo_codes_task[**P,R](self: Task[P,R], *, started_at: float | None) -> str:
+def deactivate_unused_promo_codes_task(self: Task[P,R], *, started_at: float | None) -> str:
     """Деактивирует у пользователей активные промокоды, которые были активированы больше суток назад."""
 
     kwargs = cast(dict[str, object], self.request.kwargs or {}).copy()  # noqa

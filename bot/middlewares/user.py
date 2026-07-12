@@ -1,17 +1,26 @@
-from typing import cast
+from typing import cast, overload
+
+from dishka import FromDishka
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.utils.injector import inject
 from core.repositories.utils import db_action_with_tenacity
 from core.services.user import UserService
+from core.ioc import inject
+
+
+@overload
+async def _register_user_middleware_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update
+) -> None: ...
 
 
 @inject
 async def _register_user_middleware_helper(
-        update: Update, context: ContextTypes.DEFAULT_TYPE,
-        user_service: UserService
+        update: Update,
+        *,
+        user_service: FromDishka[UserService]
 ) -> None:
     tg_user = update.effective_user
 
@@ -24,5 +33,5 @@ async def _register_user_middleware_helper(
     ))
 
 
-async def register_user_middleware(update: type[Update], context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _register_user_middleware_helper(cast(Update, cast(object, update)), context)
+async def register_user_middleware(update: type[Update], _: ContextTypes.DEFAULT_TYPE) -> None:
+    await _register_user_middleware_helper(cast(Update, cast(object, update)))

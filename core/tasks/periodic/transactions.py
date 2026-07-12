@@ -3,21 +3,26 @@ from __future__ import annotations
 import time
 import logging
 from datetime import timedelta
-from typing import cast
+from typing import cast, ParamSpec, TypeVar
 
-from celery import shared_task, Task
+from celery import shared_task
 
 from django.utils import timezone
 
 from core.domain.enums import TransactionStatus
 from core.repositories.utils import safe_db_action_sync_with_retries_celery
+from core.tasks.utils import Task
 from core.models import Transaction
 
 
 logger = logging.getLogger(__name__)
 
 
-def _delete_cancelled_two_weeks_ago_transactions[**P, R](
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _delete_cancelled_two_weeks_ago_transactions(
         celery_task: Task[P,R], started_at: float, celery_kwargs: dict[str, object], timeout: float
 ) -> tuple[int, dict[str, int]] | None:
     two_weeks_ago = timezone.now() - timedelta(days=14)
@@ -34,7 +39,7 @@ def _delete_cancelled_two_weeks_ago_transactions[**P, R](
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def cleanup_two_week_cancelled_transactions_task[**P,R](self: Task[P,R], *, started_at: float | None) -> str:
+def cleanup_two_week_cancelled_transactions_task(self: Task[P,R], *, started_at: float | None) -> str:
     """Удаляет все транзакции со статусом CANCELLED, которые были обновлены более 14 дней назад."""
 
     kwargs = cast(dict[str, object], self.request.kwargs or {}).copy()  # noqa

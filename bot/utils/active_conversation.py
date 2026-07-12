@@ -52,6 +52,7 @@ def autosave_active_conversation[**P](func: UpdateHandler[P, Message]):
     return wrapper
 
 
+# В данный момент не используется
 def autosave_active_conversation_with_context[**P](func: UpdateWithContextHandler[P, Message]):
     """
     После выполнения декорируемой функции её возвращаемое значение будет сохранено в

@@ -7,11 +7,13 @@ from typing import cast, TypedDict
 from collections.abc import Generator
 
 from httpx import NetworkError
+
 from telegram import InlineKeyboardMarkup, Update, InputMediaPhoto, Message
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, RetryAfter
 
 from django.conf import settings
-from telegram.error import BadRequest, RetryAfter
+
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
 
 from bot.utils.retries import sleep_for_retry_after

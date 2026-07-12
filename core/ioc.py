@@ -1,6 +1,6 @@
 import httpx
 from typing import final
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Awaitable
 
 from dishka import AsyncContainer, Provider, Scope, provide, make_async_container
 from dishka.integrations.base import wrap_injection
@@ -78,8 +78,6 @@ async def close_container() -> None:
         _container = None
 
 
-# TODO: в будущем можно заменить текущий inject на вот этот, однако для его использования нужно оборачивать
-#       зависимости в FromDishka; этот декоратор можно использовать только с асинхронными функциями, так как контейнер
-#       асинхронный
-def inject[**P,R](func: Callable[P,R]):
+def inject[**P,R](func: Callable[P,Awaitable[R]]):
+    """Данный декоратор можно использовать только с асинхронными функциями."""
     return wrap_injection(func=func, container_getter=lambda args, kwargs: get_container(), is_async=True)

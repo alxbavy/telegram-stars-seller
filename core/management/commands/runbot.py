@@ -23,7 +23,7 @@ from bot.handlers.error import error_handler
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 
-from core.ioc import get_container, close_container
+from core.ioc import close_container
 
 
 type DefaultApplication = Application[
@@ -45,10 +45,7 @@ class Command(BaseCommand):
         media_write_timeout=60.0  # Время на загрузку тяжелых файлов/медиа
     )
 
-    async def post_init(
-            self,
-            application: DefaultApplication
-    ) -> None:
+    async def post_init(self, application: DefaultApplication) -> None:
         commands = [BotCommand("start", "Сделать новый заказ")]
         if settings.DEBUG:
             user_warning = "Режим отладки - если ты обычный пользователь, сообщи об ошибке в тех. поддержку"
@@ -62,7 +59,7 @@ class Command(BaseCommand):
         loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
         self.stdout.write("Бот: ThreadPoolExecutor расширен до 50 потоков.")
 
-    async def post_stop(self, application: DefaultApplication) -> None:
+    async def post_stop(self, _: DefaultApplication) -> None:
         self.stdout.write("Bot is stopping, closing dishka container...")
 
         try:
@@ -90,8 +87,6 @@ class Command(BaseCommand):
             self.stderr.write("Ошибка: TELEGRAM_BOT_TOKEN не найден в .env")
             return
 
-        container = get_container()
-
         # data_dir = Path(settings.BASE_DIR) / "bot" / "data"
         # data_dir.mkdir(parents=True, exist_ok=True)
         # filepath = data_dir / "bot_persistence.pickle"
@@ -106,7 +101,7 @@ class Command(BaseCommand):
 
         # .persistence(persistence) TODO: продумать персистентность
         application = (
-            ApplicationBuilder()
+            ApplicationBuilder()  # pyright: ignore[reportUnknownMemberType]
             .token(token)
             .request(self.request_config)
             .arbitrary_callback_data(True)
@@ -114,9 +109,8 @@ class Command(BaseCommand):
             .post_stop(self.post_stop)
             .build()
         )
-        application.bot_data["dishka_container"] = container
 
-        application.add_error_handler(error_handler)
+        application.add_error_handler(error_handler)  # noqa
 
         application.add_handler(TypeHandler(Update, register_user_middleware), group=-1)
         application.add_handler(get_conversation_handler())

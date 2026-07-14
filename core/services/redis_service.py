@@ -94,8 +94,16 @@ def get_and_del_by_key(service_name: str, transaction_id: str | UUID) -> str | N
     return get_and_del(keys=[key])
 
 
-def acquire_lock(lock_name: str, timeout: float = 180.0, blocking_timeout: float = 10.0) -> Lock | None:
-    lock = cast(Lock, redis_client.lock(lock_name, timeout=timeout, blocking_timeout=blocking_timeout))
+def acquire_lock(
+        lock_name: str,
+        timeout: float = 180.0,
+        blocking: bool = True, blocking_timeout: float = 10.0
+) -> Lock | None:
+    lock = cast(Lock, redis_client.lock(
+        lock_name,
+        timeout=timeout,
+        blocking=blocking, blocking_timeout=blocking_timeout
+    ))
 
     if not lock.acquire():
         return None

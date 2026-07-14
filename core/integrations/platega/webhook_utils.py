@@ -408,7 +408,7 @@ async def safe_notify_user_about_status_with_retries(
         status: str, transaction_id: str,
         amount_stars: int, price: str,
         target_username: str,
-        pay_url: str, is_gift: bool | None = None,
+        pay_url: str,
         promo_name: str = "", promo_discount: Decimal | None = None,
         *,
         timeout: float
@@ -435,7 +435,7 @@ async def safe_notify_user_about_status_with_retries(
             promo_name=promo_name, promo_discount=promo_discount
         )
         reply_markup = build_order_confirmed_kb(pay_url)
-        photo = "order_confirmed_gift.jpg" if is_gift else "order_confirmed_self.jpg"
+        photo = "order_confirmed.jpg"
 
     else:
         support_url = await safe_get_support_url_with_retries(

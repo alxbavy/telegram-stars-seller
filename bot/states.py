@@ -15,14 +15,10 @@ class BotConversationState(IntEnum):
     CHOOSE_RECIPIENT = auto()
     ENTER_GIFT_USERNAME = auto()
 
-    CHOOSE_PAYMENT_SELF = auto()
-    CHOOSE_PAYMENT_GIFT = auto()
-
+    CHOOSE_PAYMENT = auto()
     ENTER_PROMO = auto()
 
-    ORDER_CONFIRMATION_SELF = auto()
-    ORDER_CONFIRMATION_GIFT = auto()
-
+    ORDER_CONFIRMATION = auto()
     ORDER_CONFIRMED = auto()
 
     LARGE_ORDER_WARNING = auto()

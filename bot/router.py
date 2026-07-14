@@ -66,11 +66,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
             BotConversationState.ENTER_GIFT_USERNAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_gift_username)
             ],
-            BotConversationState.CHOOSE_PAYMENT_SELF: [
-                CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback),
-                CallbackQueryHandler(handle_promo_input_request, pattern=PromoCodeCallback)
-            ],
-            BotConversationState.CHOOSE_PAYMENT_GIFT: [
+            BotConversationState.CHOOSE_PAYMENT: [
                 CallbackQueryHandler(handle_payment_method, pattern=PaymentMethodCallback),
                 CallbackQueryHandler(handle_promo_input_request, pattern=PromoCodeCallback)
             ],
@@ -78,10 +74,7 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_enter_promo),
                 CallbackQueryHandler(handle_promo_code_cancel, pattern=CancelPromoCodeCallback)
             ],
-            BotConversationState.ORDER_CONFIRMATION_SELF: [
-                CallbackQueryHandler(handle_order_confirmed, pattern=OrderConfirmedCallback)
-            ],
-            BotConversationState.ORDER_CONFIRMATION_GIFT: [
+            BotConversationState.ORDER_CONFIRMATION: [
                 CallbackQueryHandler(handle_order_confirmed, pattern=OrderConfirmedCallback)
             ],
             BotConversationState.ORDER_CONFIRMED: [],  # В этом состоянии есть только переход по URL

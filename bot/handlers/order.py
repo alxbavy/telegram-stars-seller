@@ -138,7 +138,7 @@ async def handle_custom_quantity_input(
 @overload
 async def _handle_recipient_mode_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]: ...
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]: ...
 
 
 @inject
@@ -146,7 +146,7 @@ async def _handle_recipient_mode_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         promo_service: FromDishka[PromoCodeService]
-) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]:
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]:
     cb_data = cast_force(RecipientModeCallback, update.callback_query.data)
     ctx = get_view_context(context)
 
@@ -167,7 +167,7 @@ async def _handle_recipient_mode_helper(
             ctx.order.target_username
         )
 
-        return BotConversationState.CHOOSE_PAYMENT_SELF
+        return BotConversationState.CHOOSE_PAYMENT
 
     else:
         _ = await show_enter_username(update, context)
@@ -178,14 +178,14 @@ async def _handle_recipient_mode_helper(
 @ensure_use_active_conversation_with_callback
 async def handle_recipient_mode(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]:
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]:
     return await _handle_recipient_mode_helper(update, context)
 
 
 @overload
 async def _handle_gift_username_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]: ...
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT]: ...
 
 
 @inject
@@ -194,7 +194,7 @@ async def _handle_gift_username_helper(
         *,
         fragment_client: FromDishka[FragmentClient],
         promo_service: FromDishka[PromoCodeService]
-) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]:
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT]:
     user_id = update.effective_user.id
     if user_id in running_users:
         return BotConversationState.ENTER_GIFT_USERNAME
@@ -234,7 +234,7 @@ async def _handle_gift_username_helper(
 
         _ = await show_payment_methods(update, context, stars_count, active_promo, username)
 
-        return BotConversationState.CHOOSE_PAYMENT_GIFT
+        return BotConversationState.CHOOSE_PAYMENT
 
     finally:
         running_users.discard(user_id)
@@ -243,14 +243,14 @@ async def _handle_gift_username_helper(
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
 async def handle_gift_username(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]:
+) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT]:
     return await _handle_gift_username_helper(update, context)
 
 
 @overload
 async def _handle_payment_method_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]: ...
+) -> Literal[BotConversationState.ORDER_CONFIRMATION]: ...
 
 
 @inject
@@ -258,13 +258,12 @@ async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         promo_service: FromDishka[PromoCodeService]
-) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]:
+) -> Literal[BotConversationState.ORDER_CONFIRMATION]:
     ctx = get_view_context(context)
     cb_data = cast_force(PaymentMethodCallback, update.callback_query.data)
 
     stars = ctx.order.quantity
     price = cb_data.price
-    is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
 
     ctx.order.price = str(price)
     ctx.order.payment_method = cb_data.method
@@ -280,26 +279,22 @@ async def _handle_payment_method_helper(
 
     _ = await show_order_confirmation(
         update, context,
-        stars, price, is_gift, ctx.order.target_username, active_promo
+        stars, price, ctx.order.target_username, active_promo
     )
-    return BotConversationState.ORDER_CONFIRMATION_GIFT if is_gift else BotConversationState.ORDER_CONFIRMATION_SELF
+    return BotConversationState.ORDER_CONFIRMATION
 
 
 @ensure_use_active_conversation_with_callback
 async def handle_payment_method(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]:
+) -> Literal[BotConversationState.ORDER_CONFIRMATION]:
     return await _handle_payment_method_helper(update, context)
 
 
 @overload
 async def _handle_order_confirmed_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[
-    BotConversationState.ORDER_CONFIRMATION_SELF,
-    BotConversationState.ORDER_CONFIRMATION_GIFT,
-    BotConversationState.ORDER_CONFIRMED
-]: ...
+) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]: ...
 
 
 @inject
@@ -309,18 +304,12 @@ async def _handle_order_confirmed_helper(
         fragment_client: FromDishka[FragmentClient], payment_service: FromDishka[PaymentService],
         transaction_service: FromDishka[TransactionService], promo_service: FromDishka[PromoCodeService],
         user_service: FromDishka[UserService], support_service: FromDishka[SupportService]
-) -> Literal[
-    BotConversationState.ORDER_CONFIRMATION_SELF,
-    BotConversationState.ORDER_CONFIRMATION_GIFT,
-    BotConversationState.ORDER_CONFIRMED
-]:
+) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:
     ctx = get_view_context(context)
 
-    is_gift = ctx.order.recipient_mode == RecipientMode.GIFT
-
-    if not is_gift and update.effective_user.username is None:
+    if ctx.order.recipient_mode == RecipientMode.SELF and update.effective_user.username is None:
         _ = await send_empty_username_alert(update)
-        return BotConversationState.ORDER_CONFIRMATION_SELF
+        return BotConversationState.ORDER_CONFIRMATION
 
     # Если maintenance_mode, выбросится исключение для обработки в error_handler
     await db_action_with_tenacity(payment_service.ensure_no_maintenance_mode())
@@ -377,7 +366,7 @@ async def _handle_order_confirmed_helper(
     pay_url = payment_dto.pay_url
     if pay_url is None:
         _ = await show_pay_url_not_provided(update, context, await support_service.get_support_url())
-        return BotConversationState.ORDER_CONFIRMATION_GIFT if is_gift else BotConversationState.ORDER_CONFIRMATION_SELF
+        return BotConversationState.ORDER_CONFIRMATION
 
     parsed_payload["pay_url"] = pay_url
 
@@ -396,7 +385,7 @@ async def _handle_order_confirmed_helper(
                               seconds=actual_expires_in.second)
     expires_in_minutes = str(ceil(expires_in_td.total_seconds() / 60))
 
-    msg = await edit_order_creating_message(order_msg, is_gift)
+    msg = await edit_order_creating_message(order_msg)
     if msg is None:
         raise RuntimeError(f"Не получилось изменить сообщение с id {order_msg.message_id}")
 
@@ -412,7 +401,7 @@ async def _handle_order_confirmed_helper(
         msg = await edit_order_created_message(
             msg,
             amount_stars, payment_dto.price, pay_url, payment_dto.transaction_id,
-            expires_in_minutes, is_gift, ctx.order.target_username, active_promo
+            expires_in_minutes, ctx.order.target_username, active_promo
         )
         if msg is None:
             raise RuntimeError(f"Не получилось изменить сообщение с id {order_msg.message_id}")
@@ -424,7 +413,7 @@ async def _handle_order_confirmed_helper(
         return BotConversationState.ORDER_CONFIRMED
 
     else:
-        msg = await edit_order_creating_failed_message(msg, is_gift)
+        msg = await edit_order_creating_failed_message(msg)
         err_msg = (
             f"При попытке сохранить id сообщения заказа или транзакция {payment_dto.transaction_id} не была найдена, "
             f"или произошла непредвиденная ошибка"
@@ -432,15 +421,11 @@ async def _handle_order_confirmed_helper(
         if msg is None:
             err_msg += f". Также не получилось обновить сообщения заказа с id {order_msg.message_id}"
         logger.exception(err_msg)
-        return BotConversationState.ORDER_CONFIRMATION_GIFT if is_gift else BotConversationState.ORDER_CONFIRMATION_SELF
+        return BotConversationState.ORDER_CONFIRMATION
 
 
 @ensure_use_active_conversation_with_callback
 async def handle_order_confirmed(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[
-    BotConversationState.ORDER_CONFIRMATION_SELF,
-    BotConversationState.ORDER_CONFIRMATION_GIFT,
-    BotConversationState.ORDER_CONFIRMED
-]:
+) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:
     return await _handle_order_confirmed_helper(update, context)

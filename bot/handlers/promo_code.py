@@ -16,8 +16,6 @@ from bot.renderers.promo_code import (
 )
 from bot.states import BotConversationState
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
-from bot.context import get_view_context
-from bot.enums import RecipientMode
 
 from core.domain.enums import FINAL_MSG_STATUSES
 from core.repositories.utils import db_action_with_tenacity
@@ -43,11 +41,10 @@ async def _handle_promo_input_request_helper(
         *,
         promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.ENTER_PROMO]:
-    ctx = get_view_context(context)
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
     )
-    _ = await show_enter_promo(update, context, ctx.order.recipient_mode == RecipientMode.SELF, active_promo)
+    _ = await show_enter_promo(update, context, active_promo)
     return BotConversationState.ENTER_PROMO
 
 
@@ -78,8 +75,8 @@ async def _handle_promo_code_cancel_helper(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
     )
 
-    ctx = get_view_context(context)
-    _ = await show_enter_promo(update, context, ctx.order.recipient_mode == RecipientMode.SELF, active_promo)
+    _ = await show_enter_promo(update, context, active_promo)
+
     return BotConversationState.ENTER_PROMO
 
 
@@ -171,10 +168,9 @@ async def _handle_enter_promo_helper(
             user_service.update_active_promo(update.effective_user.id, found_promo)
         )
 
-        ctx = get_view_context(context)
         _ = await show_promo_success(
             update, context,
-            ctx.order.recipient_mode == RecipientMode.SELF, found_promo, usage_left_account
+            found_promo, usage_left_account
         )
 
     finally:

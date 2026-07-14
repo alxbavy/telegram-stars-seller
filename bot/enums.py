@@ -24,7 +24,6 @@ class BackDestination(StrEnum):
     CUSTOM_QUANTITY_INPUT = "custom_quantity_input"
     CHOOSE_RECIPIENT = "choose_recipient"
     ENTER_GIFT_USERNAME = "enter_gift_username"
-    CHOOSE_PAYMENT_SELF = "choose_payment_self"
-    CHOOSE_PAYMENT_GIFT = "choose_payment_gift"
+    CHOOSE_PAYMENT = "choose_payment"
     PROFILE = "profile"
     REFERRALS_LIST = "referrals_list"

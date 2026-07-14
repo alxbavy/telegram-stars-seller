@@ -31,7 +31,6 @@ from core.services.redis_service import (
     get_and_del_by_key, save_status_by_key,
 )
 from core.tasks import Task
-from core.models import TARGET_SELF
 
 
 logger = logging.getLogger(__name__)
@@ -131,7 +130,6 @@ def update_order_message_task(
         price: str,
         target_username: str,
         pay_url: str,
-        is_gift: bool,
         promo_name: str, promo_discount: str | None,
         *,
         started_at: float | None
@@ -151,14 +149,14 @@ def update_order_message_task(
             price,
             target_username,
             pay_url,
-            is_gift,
             promo_name, promo_discount,
             started_at=started_at
         )
 
     lock = acquire_lock(
         get_lock_payment_message_polling(transaction_id),
-        blocking_timeout=5.0
+        blocking=False,
+        blocking_timeout=0.0
     )
     if lock is None:
         # Если мы не смогли получить замок, значит мы дубликат - можно завершаться
@@ -468,7 +466,6 @@ async def update_transaction_status_workflow(
             f"{transaction.amount_fiat:.2f}",
             transaction.target_username,
             transaction.pay_url,
-            transaction.target_username not in [TARGET_SELF, transaction.telegram_user.username],
             transaction.metadata_info.promo_name,
             promo_discount
         ),

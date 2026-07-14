@@ -67,7 +67,7 @@ async def _handle_destination_enter_username(update: Update, context: ContextTyp
     return BotConversationState.ENTER_GIFT_USERNAME
 
 
-@register(BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT)
+@register(BackDestination.CHOOSE_PAYMENT)
 @inject
 async def _handle_destination_choose_payment(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -75,20 +75,12 @@ async def _handle_destination_choose_payment(
         promo_service: FromDishka[PromoCodeService]
 ):
     ctx = get_view_context(context)
-
     stars_count = cast(int, ctx.order.quantity)  # noqa
-
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
     )
-
-    cb_data = cast_force(BackCallback, update.callback_query.data)
-    is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)
-    username = ctx.order.target_username if is_gift else ""
-
-    _ = await show_payment_methods(update, context, stars_count, active_promo, username)
-
-    return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
+    _ = await show_payment_methods(update, context, stars_count, active_promo, ctx.order.target_username)
+    return BotConversationState.CHOOSE_PAYMENT
 
 
 @register(BackDestination.PROFILE)
@@ -121,9 +113,8 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     Единый контроллер для обработки всех кнопок 'Назад'.
     Определяет куда вернуться по BackDestination и восстанавливает контекст.
     """
+
     await clear_temporary_messages(context)
-
     cb_data = cast_force(BackCallback, update.callback_query.data)
-
     handler = back_destination_registry[cb_data.destination]
     return await handler(update, context)

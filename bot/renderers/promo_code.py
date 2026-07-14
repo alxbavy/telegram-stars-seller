@@ -8,7 +8,7 @@ from core.models import PromoCode
 
 
 @autosave_active_conversation
-async def show_enter_promo(update: Update, is_self: bool, active_promo: PromoCode | None) -> Message:
+async def show_enter_promo(update: Update, active_promo: PromoCode | None) -> Message:
     text = (
         f"<b>Введи промокод:</b>\n\n"
         f"{(
@@ -21,12 +21,11 @@ async def show_enter_promo(update: Update, is_self: bool, active_promo: PromoCod
         }"
         f"(Регистр букв важен; одновременно может быть активен только один промокод)"
     )
-    # TODO: добавить картинку
-    return await render_screen(update, text, reply_markup=build_promo_kb(is_self, active_promo), photo_name="input_promo.jpg")
+    return await render_screen(update, text, reply_markup=build_promo_kb(active_promo), photo_name="input_promo.jpg")
 
 
 @autosave_active_conversation
-async def show_promo_success(update: Update, is_self: bool, promo: PromoCode, usage_left_account: int) -> Message:
+async def show_promo_success(update: Update, promo: PromoCode, usage_left_account: int) -> Message:
     promo_applying = ""
     if promo.usage_account is None:
         promo_applying = f"{usage_left_account if usage_left_account <= 1000 else '>1000'} (глобальная деактивация)"
@@ -41,7 +40,7 @@ async def show_promo_success(update: Update, is_self: bool, promo: PromoCode, us
         f"Осталось применений — <b>{promo_applying}</b>\n\n"
         f"Промокод отменится сам, если не использовать его в течение суток, либо можно отменить самому — он не потратится"
     )
-    return await render_screen(update, text, build_promo_kb(is_self, promo))
+    return await render_screen(update, text, build_promo_kb(promo))
 
 
 async def show_promo_not_found(update: Update, promo_name: str) -> Message:

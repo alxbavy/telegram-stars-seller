@@ -89,18 +89,16 @@ async def show_payment_methods(
             f"Промокод отменится сам в течение суток, если не будет использован"
         )
 
-    is_gift = (True if username else False)
-    if is_gift:
+    if username:
         text = (
             f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}"
             f"{f'\n\n{active_promo_text}' if active_promo_text else ''}"
         )
         back_dest = BackDestination.ENTER_GIFT_USERNAME
-        photo = "payment_method_gift.jpg"
+
     else:
         text = f"💸 <b>Теперь выбери способ оплаты</b>{'\n\n' + active_promo_text if active_promo_text else ''}"
         back_dest = BackDestination.CHOOSE_RECIPIENT
-        photo = "payment_method_self.jpg"
 
     payment_methods_with_prices = (
         await get_payment_methods_with_prices(active_promo, stars_count)
@@ -109,7 +107,7 @@ async def show_payment_methods(
     return await render_screen(
         update, text,
         build_payment_methods_kb(payment_methods_with_prices, back_dest),
-        photo
+        photo_name="payment_method.jpg"
     )
 
 
@@ -132,7 +130,7 @@ def _get_promo_and_price_sentences(price: Decimal, promo_name: str, promo_discou
 async def show_order_confirmation(
         update: Update,
         stars: int, price: Decimal,
-        is_gift: bool, target_username: str | None = None,
+        target_username: str = "",
         active_promo: PromoCode | None = None
 ) -> Message:
     promo_name = ""
@@ -152,14 +150,11 @@ async def show_order_confirmation(
         f"{'Для кого 🎁 — ' + target_username + '\n' if target_username else ''}"
     )
 
-    if is_gift:
-        back_dest = BackDestination.CHOOSE_PAYMENT_GIFT
-        photo = "order_confirmation_gift.jpg"
-    else:
-        back_dest = BackDestination.CHOOSE_PAYMENT_SELF
-        photo = "order_confirmation_self.jpg"
-
-    return await render_screen(update, text, build_order_confirmation_kb(back_dest), photo)
+    return await render_screen(
+        update, text,
+        reply_markup=build_order_confirmation_kb(BackDestination.CHOOSE_PAYMENT),
+        photo_name="order_confirmation.jpg"
+    )
 
 
 @autosave_active_conversation
@@ -177,7 +172,7 @@ async def show_pay_url_not_provided(
 def get_order_created_text(
         transaction_id: UUID | str,
         stars: int, price: Decimal,
-        target_username: str | None, expires_in: str | None = None,
+        target_username: str, expires_in: str | None = None,
         promo_name: str = "", promo_discount: Decimal | None = None
 ) -> str:
     promo_sentence, price_sentence = _get_promo_and_price_sentences(price, promo_name, promo_discount)
@@ -198,7 +193,7 @@ async def edit_order_created_message(
         msg: Message,
         stars: int, price: Decimal,
         pay_url: str, transaction_id: UUID, expires_in: str | None,
-        is_gift: bool, target_username: str | None = None,
+        target_username: str = "",
         active_promo: PromoCode | None = None
 ) -> Message | None:
     promo_name = ""
@@ -211,32 +206,30 @@ async def edit_order_created_message(
         transaction_id, stars, price, target_username, expires_in,
         promo_name, promo_discount
     )
-    photo = "order_confirmed_gift.jpg" if is_gift else "order_confirmed_self.jpg"
-    return await update_existing_message(
-        msg,
-        text, build_order_confirmed_kb(pay_url), photo
-    )
-
-
-async def edit_order_creating_message(msg: Message, is_gift: bool) -> Message | None:
-    text = f"⏳ <b>Заказ создаётся...</b>"
-    photo = "order_confirmation_gift.jpg" if is_gift else "order_confirmation_self.jpg"
-    return await update_existing_message(msg, text, reply_markup=None, photo_name=photo)
-
-
-async def edit_order_creating_failed_message(msg: Message, is_gift: bool) -> Message | None:
-    text = f"❌ <b>Не удалось создать заказ</b>\n\nПопробуй ещё раз!"
-
-    if is_gift:
-        back_dest = BackDestination.CHOOSE_PAYMENT_GIFT
-        photo = "order_confirmation_gift.jpg"
-    else:
-        back_dest = BackDestination.CHOOSE_PAYMENT_SELF
-        photo = "order_confirmation_self.jpg"
 
     return await update_existing_message(
         msg,
         text,
-        build_order_confirmation_kb(back_dest),
-        photo
+        reply_markup=build_order_confirmed_kb(pay_url),
+        photo_name="order_confirmed.jpg"
+    )
+
+
+async def edit_order_creating_message(msg: Message) -> Message | None:
+    text = f"⏳ <b>Заказ создаётся...</b>"
+    return await update_existing_message(
+        msg, text,
+        reply_markup=None,
+        photo_name="order_confirmation.jpg"
+    )
+
+
+async def edit_order_creating_failed_message(msg: Message) -> Message | None:
+    text = f"❌ <b>Не удалось создать заказ</b>\n\nПопробуй ещё раз!"
+
+    return await update_existing_message(
+        msg,
+        text,
+        reply_markup=build_order_confirmation_kb(BackDestination.CHOOSE_PAYMENT),
+        photo_name="order_confirmation.jpg"
     )

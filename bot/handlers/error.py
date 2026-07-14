@@ -13,7 +13,7 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
 
-from bot.keyboards.error import KeyboardMethodError, build_support_kb
+from bot.keyboards.error import KeyboardMethodError, build_error_kb
 from bot.renderers.base import delete_message, send_new_message
 from bot.context import get_view_context
 
@@ -63,7 +63,7 @@ async def error_handler(
         return
 
     support_url = await support_service.get_support_url()
-    reply_markup = build_support_kb(support_url)
+    reply_markup = build_error_kb(support_url)
     error_type = context.error.__class__.__name__
 
     if isinstance(context.error, (FragmentAPIError, PlategaAPIError)):

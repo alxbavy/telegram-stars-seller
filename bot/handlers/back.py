@@ -5,6 +5,8 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from utils import cast_force
+
 from bot.handlers.start import start_handler
 
 from bot.renderers.order import (
@@ -12,7 +14,7 @@ from bot.renderers.order import (
     show_custom_quantity_input,
     show_choose_recipient,
     show_enter_username,
-    show_payment_methods_dynamic
+    show_payment_methods
 )
 from bot.renderers.profile import show_profile_page
 
@@ -20,12 +22,13 @@ from bot.utils.active_conversation import ensure_use_active_conversation_with_ca
 from bot.utils.handlers_registry import build_async_handlers_register
 from bot.utils.type_aliases import UpdateWithContextHandler
 
-from bot.callbacks import BackCallback, cast_callback
+from bot.callbacks import BackCallback
 from bot.context import clear_profile_data, clear_temporary_messages, get_view_context
 from bot.enums import BackDestination
 from bot.states import BotConversationState
 
 from core.repositories.utils import db_action_with_tenacity
+from core.services.promo_code import PromoCodeService
 from core.services.user import UserService
 from core.ioc import inject
 
@@ -65,20 +68,25 @@ async def _handle_destination_enter_username(update: Update, context: ContextTyp
 
 
 @register(BackDestination.CHOOSE_PAYMENT_SELF, BackDestination.CHOOSE_PAYMENT_GIFT)
-async def _handle_destination_choose_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # При возврате на экран оплаты нам нужно заново рассчитать цены,
-    # так как мы не храним их в контексте (цены могут измениться).
-    # Берем количество звезд из черновика.
+@inject
+async def _handle_destination_choose_payment(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        *,
+        promo_service: FromDishka[PromoCodeService]
+):
     ctx = get_view_context(context)
 
-    # noinspection PyUnnecessaryCast
-    stars_count = cast(int, ctx.order.quantity)
+    stars_count = cast(int, ctx.order.quantity)  # noqa
 
-    cb_data = cast_callback(BackCallback, update.callback_query.data)
+    active_promo = await db_action_with_tenacity(
+        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+    )
+
+    cb_data = cast_force(BackCallback, update.callback_query.data)
     is_gift = (cb_data.destination == BackDestination.CHOOSE_PAYMENT_GIFT)
     username = ctx.order.target_username if is_gift else ""
 
-    _ = await show_payment_methods_dynamic(update, context, stars_count, username=username)
+    _ = await show_payment_methods(update, context, stars_count, active_promo, username)
 
     return BotConversationState.CHOOSE_PAYMENT_GIFT if is_gift else BotConversationState.CHOOSE_PAYMENT_SELF
 
@@ -115,7 +123,7 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
     await clear_temporary_messages(context)
 
-    cb_data = cast_callback(BackCallback, update.callback_query.data)
+    cb_data = cast_force(BackCallback, update.callback_query.data)
 
     handler = back_destination_registry[cb_data.destination]
     return await handler(update, context)

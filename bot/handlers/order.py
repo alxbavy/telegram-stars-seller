@@ -10,19 +10,20 @@ from dishka import FromDishka
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 
-from bot.keyboards.error import KeyboardMethodError
-from bot.renderers.base import delete_message
-from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
+from utils import cast_force
 
 from bot.handlers.start import running_users
 
+from bot.keyboards.error import KeyboardMethodError
+
+from bot.renderers.base import delete_message
 from bot.renderers.main import send_empty_username_alert
 from bot.renderers.order import (
     show_choose_recipient,
     show_custom_quantity_input,
     edit_order_creating_failed_message,
     show_pay_url_not_provided,
-    show_payment_methods_dynamic,
+    show_payment_methods,
     show_large_order_warning,
     show_enter_username,
     show_searching_username,
@@ -30,12 +31,13 @@ from bot.renderers.order import (
     show_order_confirmation, edit_order_created_message, edit_order_creating_message
 )
 
-from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, cast_callback, FixedQuantityCallback
+from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
+from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, FixedQuantityCallback
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
-from core.integrations.fragment.client import FragmentClient
 
+from core.integrations.fragment.client import FragmentClient
 from core.integrations.utils import retries_with_tenacity
 from core.repositories.utils import db_action_with_tenacity
 from core.services.payment import PaymentService
@@ -53,7 +55,7 @@ logger = logging.getLogger(__name__)
 async def handle_fixed_quantity(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.CHOOSE_RECIPIENT]:
-    cb_data = cast_callback(FixedQuantityCallback, update.callback_query.data)
+    cb_data = cast_force(FixedQuantityCallback, update.callback_query.data)
     ctx = get_view_context(context)
     ctx.order.quantity = cb_data.amount
 
@@ -133,23 +135,43 @@ async def handle_custom_quantity_input(
     return await _handle_custom_quantity_input_helper(update, context)
 
 
-async def _handle_recipient_mode_helper(
+@overload
+async def _handle_recipient_mode_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]: ...
+
+
+@inject
+async def _handle_recipient_mode_helper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        *,
+        promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.CHOOSE_PAYMENT_SELF, BotConversationState.ENTER_GIFT_USERNAME]:
-    cb_data = cast_callback(RecipientModeCallback, update.callback_query.data)
+    cb_data = cast_force(RecipientModeCallback, update.callback_query.data)
     ctx = get_view_context(context)
 
     ctx.order.recipient_mode = cb_data.mode
     if cb_data.mode == RecipientMode.SELF:
         # Нужно указывать пустым, так как сюда можно вернуться с предыдущих шагов, где он мог быть заполнен
         ctx.order.target_username = ""
-
         stars_count = cast(int, ctx.order.quantity)  # noqa
-        _ = await show_payment_methods_dynamic(update, context, stars_count, username=ctx.order.target_username)
+
+        active_promo = await db_action_with_tenacity(
+            promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        )
+
+        _ = await show_payment_methods(
+            update, context,
+            stars_count,
+            active_promo,
+            ctx.order.target_username
+        )
+
         return BotConversationState.CHOOSE_PAYMENT_SELF
 
     else:
         _ = await show_enter_username(update, context)
+
         return BotConversationState.ENTER_GIFT_USERNAME
 
 
@@ -170,7 +192,8 @@ async def _handle_gift_username_helper(  # noqa  # pyright: ignore[reportInconsi
 async def _handle_gift_username_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        fragment_client: FromDishka[FragmentClient]
+        fragment_client: FromDishka[FragmentClient],
+        promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT_GIFT]:
     user_id = update.effective_user.id
     if user_id in running_users:
@@ -204,7 +227,13 @@ async def _handle_gift_username_helper(
         ctx.order.target_username = username
 
         stars_count = cast(int, ctx.order.quantity)  # noqa
-        _ = await show_payment_methods_dynamic(update, context, stars_count, username=username)
+
+        active_promo = await db_action_with_tenacity(
+            promo_service.get_active_promo_for_telegram_user_id(user_id)
+        )
+
+        _ = await show_payment_methods(update, context, stars_count, active_promo, username)
+
         return BotConversationState.CHOOSE_PAYMENT_GIFT
 
     finally:
@@ -231,7 +260,7 @@ async def _handle_payment_method_helper(
         promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION_GIFT, BotConversationState.ORDER_CONFIRMATION_SELF]:
     ctx = get_view_context(context)
-    cb_data = cast_callback(PaymentMethodCallback, update.callback_query.data)
+    cb_data = cast_force(PaymentMethodCallback, update.callback_query.data)
 
     stars = ctx.order.quantity
     price = cb_data.price
@@ -244,9 +273,6 @@ async def _handle_payment_method_helper(
 
     if stars is None:
         raise AttributeError("order stars amount is None")
-
-    if price is None:
-        raise NotImplementedError("needs static implementation")
 
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)

@@ -1,12 +1,7 @@
 from decimal import Decimal
-from typing import cast
 from dataclasses import dataclass
 
 from bot.enums import MainMenuAction, BackDestination, RecipientMode, ProfileAction
-
-
-def cast_callback[C](callback: type[C], update_callback_query_data: str | None) -> C:
-    return cast(C, update_callback_query_data)
 
 
 @dataclass(frozen=True)
@@ -48,8 +43,7 @@ class PaymentMethodCallback:
     method_api: str
     method: str
     method_external_id: str
-    price: Decimal | None
-    commission_percent: Decimal | None
+    price: Decimal
 
 
 @dataclass(frozen=True)

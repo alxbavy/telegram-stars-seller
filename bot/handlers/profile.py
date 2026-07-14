@@ -5,13 +5,15 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from utils import cast_force
+
 from bot.renderers.profile import show_order_history_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.handlers_registry import build_async_handlers_register
 from bot.utils.type_aliases import UpdateWithContextHandler
 
-from bot.callbacks import HistoryPageCallback, cast_callback, ProfileMenuCallback
+from bot.callbacks import HistoryPageCallback, ProfileMenuCallback
 from bot.enums import ProfileAction
 from bot.states import BotConversationState
 
@@ -40,7 +42,7 @@ async def _handle_profile_action_history(
 
 @ensure_use_active_conversation_with_callback
 async def handle_profile_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cb_data = cast_callback(ProfileMenuCallback, update.callback_query.data)
+    cb_data = cast_force(ProfileMenuCallback, update.callback_query.data)
     handler = profile_registry[cb_data.action]
     return await handler(update, context)
 
@@ -57,7 +59,7 @@ async def _handle_history_pagination_helper(
         *,
         stats_service: FromDishka[StatsService]
 ) -> Literal[BotConversationState.ORDER_HISTORY]:
-    cb_data = cast_callback(HistoryPageCallback, update.callback_query.data)
+    cb_data = cast_force(HistoryPageCallback, update.callback_query.data)
 
     history_dto = await db_action_with_tenacity(
         stats_service.get_order_history(update.effective_user.id, page=cb_data.page)

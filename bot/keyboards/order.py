@@ -61,28 +61,7 @@ def build_user_not_found_kb() -> InlineKeyboardMarkup:
     ])
 
 
-# TODO: удалить это и всё с этим связанное, в том числе упоминания в исключениях
-def build_payment_methods_kb_static(sbp_price: Decimal, card_price: Decimal, back_dest: BackDestination) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"📲 СБП — {sbp_price} ₽", callback_data=PaymentMethodCallback(
-            method_api="",
-            method="sbp",
-            method_external_id="",
-            commission_percent=Decimal("5.00"),
-            price=None
-        ))],
-        [InlineKeyboardButton(f"💳 Картой — {card_price} ₽", callback_data=PaymentMethodCallback(
-            method_api="",
-            method="card",
-            method_external_id="",
-            commission_percent=Decimal("10.00"),
-            price=None
-        ))],
-        [InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(back_dest))]
-    ])
-
-
-async def build_payment_methods_kb_dynamic(
+def build_payment_methods_kb(
         payment_methods_with_prices: Iterable[tuple[PaymentMethodDTO, Decimal]],
         back_dest: BackDestination
 ) -> InlineKeyboardMarkup:
@@ -96,8 +75,7 @@ async def build_payment_methods_kb_dynamic(
                 method_api=method.api_name,
                 method=method.name,
                 method_external_id=method.external_id,
-                price=price,
-                commission_percent=None
+                price=price
             )
         )] for method, price in payment_methods_with_prices
     ])

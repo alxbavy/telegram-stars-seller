@@ -1,35 +1,26 @@
 from decimal import Decimal
 from uuid import UUID
-from typing import overload
-
-from dishka import FromDishka
 
 from telegram import Update, Message
-from telegram.ext import ContextTypes
 
 from bot.keyboards.main import build_back_to_main_menu_kb
-from bot.renderers.base import render_screen, update_existing_message
 from bot.keyboards.order import (
     build_quantity_kb,
     build_back_to_quantity_kb,
     build_large_order_kb,
     build_recipient_kb,
     build_back_to_recipient_kb,
-    build_payment_methods_kb_static,
-    build_payment_methods_kb_dynamic,
+    build_payment_methods_kb,
     build_order_confirmation_kb, build_order_confirmed_kb
 )
-from bot.utils.active_conversation import autosave_active_conversation
-from bot.enums import BackDestination
-from bot.utils.string_helpers import WordCase, get_ending_for_digit_string
+from bot.middlewares.payment_method import get_payment_methods_with_prices
+from bot.renderers.base import render_screen, update_existing_message
 
-from core.dto.payment import PaymentMethodDTO
+from bot.utils.active_conversation import autosave_active_conversation
+from bot.utils.string_helpers import WordCase, get_ending_for_digit_string
+from bot.enums import BackDestination
+
 from core.models import PromoCode
-from core.repositories.utils import db_action_with_tenacity
-from core.services.payment import PaymentService
-from core.services.promo_code import PromoCodeService
-from core.services.star_price import StarService
-from core.ioc import inject
 
 
 @autosave_active_conversation
@@ -85,45 +76,12 @@ async def show_user_not_found(update: Update, user: str) -> Message:
 
 
 @autosave_active_conversation
-async def show_payment_methods_static(
+async def show_payment_methods(
         update: Update,
-        sbp_price: Decimal, card_price: Decimal,
-        is_gift: bool, username: str | None = None
-) -> Message:
-    if is_gift:
-        text = f"💳 <b>Выбери способ оплаты</b>\n\nПополним звёзды для {username}.\nВыбери: СБП или Картой"
-        back_dest = BackDestination.ENTER_GIFT_USERNAME
-        photo = "payment_method_gift.jpg"
-    else:
-        text = "💸 <b>Теперь выбери способ оплаты</b>\n\nВыбери: СБП или Картой"
-        back_dest = BackDestination.CHOOSE_RECIPIENT
-        photo = "payment_method_self.jpg"
-
-    return await render_screen(update, text, build_payment_methods_kb_static(sbp_price, card_price, back_dest), photo)
-
-
-@overload
-async def show_payment_methods_dynamic(  # noqa  # pyright: ignore[reportInconsistentOverload]
-        update: Update, context: ContextTypes.DEFAULT_TYPE,
         stars_count: int,
+        active_promo: PromoCode | None,
         username: str = ""
-) -> Message: ...
-
-
-@autosave_active_conversation
-@inject
-async def show_payment_methods_dynamic(
-        update: Update,
-        stars_count: int,
-        username: str = "",
-        *,
-        promo_service: FromDishka[PromoCodeService],
-        payment_service: FromDishka[PaymentService],
-        star_service: FromDishka[StarService]
 ) -> Message:
-    active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
-    )
     active_promo_text = ""
     if active_promo is not None:
         active_promo_text = (
@@ -144,17 +102,13 @@ async def show_payment_methods_dynamic(
         back_dest = BackDestination.CHOOSE_RECIPIENT
         photo = "payment_method_self.jpg"
 
-    # TODO: сделать отдельный middleware для получения методов с ценами (надо сначала переделать все inject)
-    discount = 1 - (active_promo.discount / 100) if active_promo is not None else Decimal("1.00")
-    payment_methods_with_prices: list[tuple[PaymentMethodDTO, Decimal]] = [
-        (method, round(await db_action_with_tenacity(
-            star_service.get_order_price(stars_count, method.commission_percent)
-        ) * discount, 2)) for method in await db_action_with_tenacity(payment_service.get_active_payment_methods())
-    ]
+    payment_methods_with_prices = (
+        await get_payment_methods_with_prices(active_promo, stars_count)
+    )
 
     return await render_screen(
         update, text,
-        await build_payment_methods_kb_dynamic(payment_methods_with_prices, back_dest),
+        build_payment_methods_kb(payment_methods_with_prices, back_dest),
         photo
     )
 

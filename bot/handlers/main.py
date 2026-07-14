@@ -3,6 +3,8 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from utils import cast_force
+
 from bot.renderers.order import show_choose_quantity
 from bot.renderers.support import show_support_page
 from bot.renderers.profile import show_profile_page
@@ -12,7 +14,7 @@ from bot.utils.active_conversation import ensure_use_active_conversation_with_ca
 from bot.utils.handlers_registry import build_async_handlers_register
 from bot.utils.type_aliases import UpdateWithContextHandler
 
-from bot.callbacks import MainMenuCallback, cast_callback
+from bot.callbacks import MainMenuCallback
 from bot.context import get_view_context
 from bot.enums import MainMenuAction
 from bot.states import BotConversationState
@@ -69,6 +71,6 @@ async def _handle_main_menu_action_info(update: Update, context: ContextTypes.DE
 
 @ensure_use_active_conversation_with_callback
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cb_data = cast_callback(MainMenuCallback, update.callback_query.data)
+    cb_data = cast_force(MainMenuCallback, update.callback_query.data)
     handler = main_menu_registry[cb_data.action]
     return await handler(update, context)

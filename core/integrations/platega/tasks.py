@@ -26,9 +26,9 @@ from core.integrations.platega.webhook_workflow import (
 )
 from core.integrations.webhook_utils import ServicesNames, transform_into_internal_status_or_keep_original
 from core.services.redis_service import (
-    acquire_lock, get_lock_or_retry,
+    sync_acquire_lock, sync_get_lock_or_retry,
     get_lock_payment_transaction, get_lock_payment_message_polling,
-    get_and_del_by_key, save_status_by_key,
+    get_and_del_by_key, sync_save_status_by_key,
 )
 from core.tasks import Task
 
@@ -100,18 +100,18 @@ def update_transaction_status_task(
         finally:
             if not is_success:
                 if new_status == platega_status:
-                    _ = save_status_by_key(
+                    _ = sync_save_status_by_key(
                         ServicesNames.PLATEGA, transaction_id, new_status,
                         if_not_exists=True
                     )
 
                 elif new_status == fragment_status:
-                    _ = save_status_by_key(
+                    _ = sync_save_status_by_key(
                         ServicesNames.FRAGMENT, transaction_id, new_status,
                         if_not_exists=True
                     )
 
-    lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
+    lock = sync_get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
 
     try:
         return async_to_sync(critical_section)()
@@ -153,7 +153,7 @@ def update_order_message_task(
             started_at=started_at
         )
 
-    lock = acquire_lock(
+    lock = sync_acquire_lock(
         get_lock_payment_message_polling(transaction_id),
         blocking=False,
         blocking_timeout=0.0
@@ -213,7 +213,7 @@ def prepare_send_stars_task(
             started_at=started_at
         )
 
-    lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
+    lock = sync_get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
 
     try:
         return async_to_sync(critical_section)()
@@ -243,7 +243,7 @@ def send_stars_task(
             started_at=started_at
         )
 
-    lock = get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
+    lock = sync_get_lock_or_retry(self, get_lock_payment_transaction(transaction_id))
 
     try:
         return async_to_sync(critical_section)()
@@ -330,7 +330,7 @@ async def send_stars_workflow(
 
     except Exception as exc:
         create_task_save_error_to_db(str(exc))
-        _ = save_status_by_key(
+        _ = sync_save_status_by_key(
             ServicesNames.FRAGMENT, transaction_id,
             TransactionStatus.FAILED
         )
@@ -344,13 +344,13 @@ async def send_stars_workflow(
     fragment_tx_id = response.get("id", None)
 
     if fragment_tx_id is not None:
-        _ = save_status_by_key(ServicesNames.FRAGMENT__FROM_CREATION, transaction_id,new_status)
+        _ = sync_save_status_by_key(ServicesNames.FRAGMENT__FROM_CREATION, transaction_id, new_status)
         _ = update_fragment_tx_task.apply_async(
             args=(str(fragment_tx_id), str(transaction_id)),
             kwargs={"started_at": None}
         )
 
-    _ = save_status_by_key(
+    _ = sync_save_status_by_key(
         ServicesNames.FRAGMENT, transaction_id,
         transform_into_internal_status_or_keep_original(new_status, ServicesNames.FRAGMENT),
         if_not_exists=True

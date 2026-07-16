@@ -34,14 +34,7 @@ app.autodiscover_tasks()
 
 # Этот сигнал срабатывает при выключении каждого отдельного процесса-воркера
 @worker_process_shutdown.connect
-def shutdown_worker(**kwargs: object):
-    logger.info("Celery worker shutting down, closing dishka container...")
-
-    from core.ioc import close_container
-
-    try:
-        asyncio.run(close_container())
-        logger.info("DI container closed successfully.")
-
-    except Exception as err:
-        logger.error(f"Error while closing DI container in Celery: {err}")
+def shutdown_worker(**_: object):
+    logger.info("Celery worker shutting down...")
+    from general_utils import close_resources, Where
+    asyncio.run(close_resources(Where("in Celery")))

@@ -180,6 +180,7 @@ class PaymentMethod(models.Model):
         related_name="methods",
         verbose_name="API платёжных систем"
     )
+    # TODO: добавить emoji-picker
     name = models.CharField(max_length=50, verbose_name="Название метода оплаты", help_text="Отображается в боте")
     external_id = models.CharField(max_length=255, verbose_name="ID метода оплаты", help_text="ID из внешнего API; Может быть числом или строкой")
     commission_percent = models.DecimalField(
@@ -289,6 +290,7 @@ class FragmentAPI(SingletonModel):
     objects = models.Manager()
 
     token = models.TextField(blank=True, help_text="Можно получить в Dashboard на fragment-api.com/dashboard")
+    # TODO: добавить поле для комиссии (админка, расчёт цены с подтягиванием цены в ton с фрагмента)
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @classmethod

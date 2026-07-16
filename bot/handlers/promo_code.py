@@ -21,7 +21,7 @@ from core.domain.enums import FINAL_MSG_STATUSES
 from core.repositories.utils import db_action_with_tenacity
 from core.services.promo_code import PromoCodeService
 from core.services.transaction import TransactionService
-from core.services.redis_service import get_lock_promo_input_processing, acquire_lock
+from core.services.redis_service import async_acquire_lock, get_lock_promo_input_processing
 from core.services.user import UserService
 from core.ioc import inject
 
@@ -114,7 +114,7 @@ async def _handle_enter_promo_helper(
         _ = await show_promo_not_active(update, promo_name)
         return BotConversationState.ENTER_PROMO
 
-    lock_promo = acquire_lock(
+    lock_promo = await async_acquire_lock(
         get_lock_promo_input_processing(), blocking_timeout=30.0
     )
 
@@ -175,7 +175,7 @@ async def _handle_enter_promo_helper(
 
     finally:
         try:
-            lock_promo.release()
+            await lock_promo.release()
 
         except Exception as exc:
             logger.exception(f"{exc.__class__.__name__} - {str(exc)}")

@@ -11,8 +11,8 @@ from celery import shared_task
 from core.integrations.fragment.webhook_workflow import update_fragment_transaction_workflow
 from core.integrations.webhook_utils import ServicesNames
 from core.services.redis_service import (
-    get_and_del_by_key, save_status_by_key,
-    get_lock_or_retry, get_lock_fragment_transaction
+    get_and_del_by_key, sync_save_status_by_key,
+    sync_get_lock_or_retry, get_lock_fragment_transaction
 )
 from core.tasks import Task
 
@@ -67,18 +67,18 @@ def update_fragment_tx_task(
         finally:
             if not is_success:
                 if new_status == status_from_webhook:
-                    _ = save_status_by_key(
+                    _ = sync_save_status_by_key(
                         ServicesNames.FRAGMENT__FROM_WEBHOOK, transaction_id, new_status,
                         if_not_exists=True
                     )
 
                 elif new_status == status_from_creation:
-                    _ = save_status_by_key(
+                    _ = sync_save_status_by_key(
                         ServicesNames.FRAGMENT__FROM_CREATION, transaction_id, new_status,
                         if_not_exists=True
                     )
 
-    lock = get_lock_or_retry(self, get_lock_fragment_transaction(transaction_id))
+    lock = sync_get_lock_or_retry(self, get_lock_fragment_transaction(transaction_id))
 
     try:
         return async_to_sync(critical_section)()

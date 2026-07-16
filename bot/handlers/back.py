@@ -5,7 +5,7 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from utils import cast_force
+from general_utils import cast_force
 
 from bot.handlers.start import start_handler
 

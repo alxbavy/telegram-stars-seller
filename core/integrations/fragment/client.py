@@ -124,6 +124,7 @@ class FragmentClient:
                 f"В данный момент у бота нет возможности перевести {amount_stars} звёзд"
                 f'{". Попробуй выбрать меньшее количество" if amount_stars > 50 else " — обратись в тех. поддержку"}'
             )
+            # TODO: заменить на отдельную ошибку, чтобы функция не перезапускалась автоматически
             raise FragmentAPITemporaryError(technical_message, bot_message)
 
         # TODO: добавить проверку с "удержанным" балансом из БД

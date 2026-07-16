@@ -1,10 +1,7 @@
 import logging
 import traceback
-import json
-import pickle
-from dataclasses import is_dataclass, asdict
-from decimal import Decimal
-from typing import override, overload
+from pickle import UnpicklingError
+from typing import overload
 
 from httpx import ConnectError
 
@@ -12,6 +9,8 @@ from dishka import FromDishka
 
 from telegram import Update
 from telegram.ext import ContextTypes, InvalidCallbackData
+
+from general_utils import json_dumps
 
 from bot.keyboards.error import KeyboardMethodError, build_error_kb
 from bot.renderers.base import delete_message, send_new_message
@@ -25,16 +24,6 @@ from core.ioc import inject
 
 
 logger = logging.getLogger(__name__)
-
-
-class DataclassEncoder(json.JSONEncoder):
-    @override
-    def default(self, o: object):
-        if is_dataclass(o) and not isinstance(o, type):
-            return asdict(o)  # noqa
-        if isinstance(o, Decimal):
-            return str(o)
-        return super().default(o)  # pyright: ignore[reportAny]
 
 
 @overload
@@ -56,7 +45,7 @@ async def error_handler(
 
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
 
-    logger.debug(f"Update: {json.dumps(update_str, cls=DataclassEncoder, ensure_ascii=False, indent=2)}")
+    logger.debug(f"Update: {json_dumps(update_str, indent=2)}")
     logger.debug(f"Traceback: {tb_string}")
 
     if not isinstance(update, Update):
@@ -124,7 +113,7 @@ async def error_handler(
         _ = await update.callback_query.answer(text, show_alert=True)
         return
 
-    elif isinstance(context.error, (pickle.UnpicklingError, TypeError, AttributeError)):
+    elif isinstance(context.error, (UnpicklingError, TypeError, AttributeError)):
         text = (
             "⚠️ <b>Структура меню обновилась...</b>\n\n"
             "Начни заказ снова с помощью /start или обратись в тех. поддержку, если ошибка останется"

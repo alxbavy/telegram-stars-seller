@@ -46,6 +46,7 @@ async def retries_with_tenacity[R](
     ):
         with attempt:
             try:
+                # TODO: coro можно await только один раз - ошибка при перезапусках; нужен callable с args и kwargs
                 return await coro
 
             except FragmentAPITooManyRequests as err:

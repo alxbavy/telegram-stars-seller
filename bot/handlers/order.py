@@ -10,7 +10,7 @@ from dishka import FromDishka
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 
-from utils import cast_force
+from general_utils import cast_force
 
 from bot.handlers.start import running_users
 
@@ -398,6 +398,7 @@ async def _handle_order_confirmed_helper(
         is_changed_successfully, _ = db_action
 
     if is_changed_successfully:
+        # TODO: проверить, сбрасывается ли промокод при оформлении заказа; также проверить автоматический сброс по времени
         msg = await edit_order_created_message(
             msg,
             amount_stars, payment_dto.price, pay_url, payment_dto.transaction_id,

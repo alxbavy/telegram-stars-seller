@@ -109,7 +109,7 @@ async def update_existing_message(
                 return cast(Message, update_or_msg.effective_message)  # noqa
             else:
                 return update_or_msg
-        logger.exception(f"{exc.__class__.__name__} - {str(exc)}")
+        logger.debug(f"{exc.__class__.__name__} - {str(exc)}")
         return None
 
     except (RetryAfter, NetworkError) as exc:

@@ -23,6 +23,7 @@ from bot.handlers.error import error_handler
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 
+from core.services.redis_service import close_async_redis_client
 from core.ioc import close_container
 
 
@@ -60,14 +61,21 @@ class Command(BaseCommand):
         self.stdout.write("Бот: ThreadPoolExecutor расширен до 50 потоков.")
 
     async def post_stop(self, _: DefaultApplication) -> None:
-        self.stdout.write("Bot is stopping, closing dishka container...")
+        self.stdout.write("Bot is stopping...")
 
+        self.stdout.write("Closing DI container in bot...")
         try:
             await close_container()
-            self.stdout.write("Dishka container closed successfully!")
-
+            self.stdout.write("DI container in bot closed successfully!")
         except Exception as err:
-            self.stderr.write(f"Error while closing dishka container in bot: {err}")
+            self.stderr.write(f"Error while closing DI container in bot: {err}")
+
+        self.stdout.write("Closing async redis client in bot...")
+        try:
+            await close_async_redis_client()
+            self.stdout.write("Async redis client in bot closed successfully!")
+        except Exception as err:
+            self.stderr.write(f"Error while closing async redis client in bot: {err}")
 
     @override
     def handle(self, *args: object, **options: object):

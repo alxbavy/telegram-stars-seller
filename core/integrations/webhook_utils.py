@@ -12,7 +12,7 @@ from core.integrations.fragment.enums import FragmentStatus
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.enums import PlategaStatus
 from core.integrations.platega.schemas import PaymentPayloadValidateModel, PlategaWebhookRequestJSON, PaymentPayloadDict
-from core.services.redis_service import redis_client, get_key_fragment_idem
+from core.services.redis_service import get_async_redis_client, get_key_fragment_idem
 
 
 logger = logging.getLogger(__name__)
@@ -32,14 +32,16 @@ def validate_fragment_token(request: HttpRequest) -> HttpResponse | None:
     return None
 
 
-def validate_fragment_idempotency_key(request: HttpRequest) -> HttpResponse | None:
+async def validate_fragment_idempotency_key(request: HttpRequest) -> HttpResponse | None:
     idem_key = request.headers.get("X-Idempotency-Key")
+
     if idem_key:
+        async_redis_client = get_async_redis_client()
         key = get_key_fragment_idem(idem_key)
-        is_new = redis_client.setnx(key, "1")
+        is_new = await async_redis_client.setnx(key, "1")
         if not is_new:
             return HttpResponse(status=200)
-        _ = redis_client.expire(key, 172800)  # 48 часов
+        _ = await async_redis_client.expire(key, 172800)  # 48 часов
 
     return None
 
@@ -59,7 +61,7 @@ def is_platega_authenticated(request: HttpRequest) -> bool:
     return True
 
 
-def access_granted_or_http_response(request: HttpRequest, webhook_name: ServicesNames) -> HttpResponse | None:
+async def access_granted_or_http_response(request: HttpRequest, webhook_name: ServicesNames) -> HttpResponse | None:
     if request.method != "POST":
         return HttpResponse(status=405)
 
@@ -72,7 +74,7 @@ def access_granted_or_http_response(request: HttpRequest, webhook_name: Services
         if http_response is not None:
             return http_response
 
-        http_response = validate_fragment_idempotency_key(request)
+        http_response = await validate_fragment_idempotency_key(request)
         if http_response is not None:
             return http_response
 

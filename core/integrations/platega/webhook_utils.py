@@ -19,7 +19,12 @@ from bot.renderers.webhook import get_message_parts_for_status
 from core.domain.enums import TransactionStatus
 from core.domain.network_utils import SAFE_TO_RETRY, RetriesEntity, get_timeout_error_or_none
 from core.integrations.fragment.enums import FragmentStatus
-from core.integrations.fragment.errors import FragmentAPINetworkError, FragmentAPITemporaryError, FragmentAPITooManyRequests
+from core.integrations.fragment.errors import (
+    FragmentAPINetworkError,
+    FragmentAPINotEnoughBalanceError,
+    FragmentAPITemporaryError,
+    FragmentAPITooManyRequests
+)
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.schemas import PaymentPayloadDict
 from core.repositories.utils import safe_db_action_async_with_retries_celery
@@ -270,7 +275,7 @@ async def create_fragment_transaction_if_not_sent_with_retries(
                 kwargs=celery_kwargs
             )
 
-        except FragmentAPITemporaryError as exc:
+        except (FragmentAPITemporaryError, FragmentAPINotEnoughBalanceError) as exc:
             raise celery_task.retry(
                 exc=exc,
                 countdown=60.0 + random.uniform(0.0, 10.0),

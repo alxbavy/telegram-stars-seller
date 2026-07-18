@@ -16,7 +16,12 @@ from bot.keyboards.error import KeyboardMethodError, build_error_kb
 from bot.renderers.base import delete_message, send_new_message
 from bot.context import get_view_context
 
-from core.integrations.fragment.errors import FragmentAPIError, FragmentAPITemporaryError, FragmentAPITooManyRequests
+from core.integrations.fragment.errors import (
+    FragmentAPIError,
+    FragmentAPINotEnoughBalanceError,
+    FragmentAPITemporaryError,
+    FragmentAPITooManyRequests
+)
 from core.integrations.platega.errors import PlategaAPIError
 from core.services.payment import MaintenanceModeException, NoUsernameError
 from core.services.support import SupportService
@@ -77,6 +82,13 @@ async def error_handler(
 
     elif isinstance(context.error, FragmentAPITemporaryError):
         text = f"⚠️ <b>Временные неполадки...</b>\n\n{context.error.bot_message}"
+
+    elif isinstance(context.error, FragmentAPINotEnoughBalanceError):
+        text = (
+            f"💰 <b>На балансе бота не хватает средств для перевода звёзд :(</b>\n\n"
+            f"Выбери меньшее количество звёзд, или попробуй заново через 5 минут, или, "
+            f"если ошибка останется, обратись в тех. поддержку"
+        )
 
     elif isinstance(context.error, NoUsernameError):
         text = (

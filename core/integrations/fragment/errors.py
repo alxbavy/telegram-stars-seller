@@ -27,15 +27,7 @@ class FragmentAPITemporaryError(Exception):
 
 
 @final
-class FragmentAPIWalletError(Exception):
+class FragmentAPINotEnoughBalanceError(Exception):
     def __init__(self, message: str) -> None:
-        self.message = message
-        super().__init__(self.message)
-
-
-@final
-class FragmentAPIUsernameNotFoundError(Exception):
-    def __init__(self, username: str, message: str | None = None) -> None:
-        self.username = username
         self.message = message
         super().__init__(self.message)

@@ -15,6 +15,7 @@ from core.domain.network_utils import SAFE_TO_RETRY
 from core.integrations.fragment.errors import (
     FragmentAPIError,
     FragmentAPINetworkError,
+    FragmentAPINotEnoughBalanceError,
     FragmentAPITooManyRequests,
     FragmentAPITemporaryError
 )
@@ -120,12 +121,7 @@ class FragmentClient:
         if balance_amount - total_price < 0:
             technical_message = f'На балансе не хватает средств в валюте "{self.currency}", {total_price = }, {balance_amount = }'
             logger.error(technical_message)
-            bot_message = (
-                f"В данный момент у бота нет возможности перевести {amount_stars} звёзд"
-                f'{". Попробуй выбрать меньшее количество" if amount_stars > 50 else " — обратись в тех. поддержку"}'
-            )
-            # TODO: заменить на отдельную ошибку, чтобы функция не перезапускалась автоматически
-            raise FragmentAPITemporaryError(technical_message, bot_message)
+            raise FragmentAPINotEnoughBalanceError(technical_message)
 
         # TODO: добавить проверку с "удержанным" балансом из БД
 

@@ -48,7 +48,6 @@ FRAGMENT_IDEM_KEY = "fragment_idem_key"
 LOCK_PROMO_INPUT_PROCESSING = "lock_promo_input_processing"
 
 
-# TODO: протестировать вне вебхука
 _lua_get_and_del = """
 local val = redis.call('GET', KEYS[1])
 if val and val ~= '' then

@@ -1,12 +1,19 @@
 import asyncio
 import logging
+from dataclasses import dataclass
 
 from telegram.error import RetryAfter
-
 from tenacity import RetryCallState
 
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class RetryConfig:
+    attempts: int = 3
+    initial_wait: float = 1.0
+    max_wait: float = 10.0
+    jitter: float = 3.0
 
 
 async def sleep_for_retry_after(retry_state: RetryCallState):

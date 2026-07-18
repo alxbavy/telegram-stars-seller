@@ -108,7 +108,7 @@ class PaymentService:
         """
 
         user_buyer = await db_action_with_tenacity(
-            self._user_repo.get_by_telegram_id(user_id)
+            self._user_repo.get_by_telegram_id, user_id
         )
         if user_buyer is None:
             raise UnregisteredUser(user_id)

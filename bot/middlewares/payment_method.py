@@ -32,9 +32,9 @@ async def get_payment_methods_with_prices(
             payment_method,
             round(
                 number=await db_action_with_tenacity(
-                    coro=star_service.get_order_price(stars_count, payment_method)
+                    star_service.get_order_price, stars_count, payment_method
                 ) * discount,
                 ndigits=2
             )
-        ) for payment_method in await db_action_with_tenacity(payment_service.get_active_payment_methods())
+        ) for payment_method in await db_action_with_tenacity(payment_service.get_active_payment_methods)
     ]

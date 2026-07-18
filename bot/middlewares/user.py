@@ -27,10 +27,7 @@ async def _register_user_middleware_helper(
     if not tg_user:
         return
 
-    _ = await db_action_with_tenacity(user_service.register_user(
-        telegram_id=tg_user.id,
-        username=tg_user.username
-    ))
+    _ = await db_action_with_tenacity(user_service.register_user, tg_user.id, tg_user.username)
 
 
 async def register_user_middleware(update: type[Update], _: ContextTypes.DEFAULT_TYPE) -> None:

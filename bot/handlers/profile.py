@@ -34,7 +34,7 @@ async def _handle_profile_action_history(
         stats_service: FromDishka[StatsService]
 ):
     history_dto = await db_action_with_tenacity(
-        stats_service.get_order_history(update.effective_user.id, page=1)
+        stats_service.get_order_history, update.effective_user.id, page=1
     )
     _ = await show_order_history_page(update, context, history_dto)
     return BotConversationState.ORDER_HISTORY
@@ -62,7 +62,7 @@ async def _handle_history_pagination_helper(
     cb_data = cast_force(HistoryPageCallback, update.callback_query.data)
 
     history_dto = await db_action_with_tenacity(
-        stats_service.get_order_history(update.effective_user.id, page=cb_data.page)
+        stats_service.get_order_history, update.effective_user.id, page=cb_data.page
     )
     _ = await show_order_history_page(update, context, history_dto)
     return BotConversationState.ORDER_HISTORY

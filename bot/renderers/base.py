@@ -16,8 +16,7 @@ from django.conf import settings
 
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
 
-from bot.utils.retries import sleep_for_retry_after
-
+from core.domain.tenacity_utils import sleep_for_retry_after
 
 logger = logging.getLogger(__name__)
 

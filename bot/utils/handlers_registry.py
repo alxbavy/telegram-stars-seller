@@ -1,4 +1,4 @@
-from bot.utils.type_aliases import AsyncCallable
+from core.domain.type_aliases import AsyncCallable
 
 
 def build_async_handlers_register[K](registry: dict[K, AsyncCallable[...,...]]):

@@ -55,7 +55,7 @@ async def _handle_main_menu_action_profile(
         user_service: FromDishka[UserService]
 ):
     profile_data = await db_action_with_tenacity(
-        user_service.get_profile_data(update.effective_user.id)
+        user_service.get_profile_data, update.effective_user.id
     )
     ctx = get_view_context(context)
     ctx.profile_data = profile_data

@@ -1,9 +1,10 @@
 import asyncio
 from httpx import Timeout
-from collections.abc import Awaitable
+from collections.abc import Callable, Awaitable
 
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
 
+from core.domain.tenacity_utils import RetryConfig
 from core.integrations.fragment.errors import (
     FragmentAPINetworkError,
     FragmentAPITemporaryError,
@@ -25,17 +26,16 @@ def create_new_timeout_conf_or_use_default(timeout: float | None, connect: float
     return default
 
 
-async def retries_with_tenacity[R](
-        coro: Awaitable[R],
-        *,
-        attempts: int = 3,
-        initial_wait: float = 1.0,
-        max_wait: float = 10.0,
-        jitter: float = 3.0
-) -> R:
+async def retries_with_tenacity[**P,R](func: Callable[P,Awaitable[R]], *args: P.args, **kwargs: P.kwargs) -> R:
+    retry_config = RetryConfig()
+
     async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(attempts),
-            wait=wait_exponential_jitter(initial=initial_wait, max=max_wait, jitter=jitter),
+            stop=stop_after_attempt(retry_config.attempts),
+            wait=wait_exponential_jitter(
+                initial=retry_config.initial_wait,
+                max=retry_config.max_wait,
+                jitter=retry_config.jitter
+            ),
             retry=retry_if_exception_type((
                     FragmentAPINetworkError,
                     FragmentAPITemporaryError,
@@ -46,8 +46,7 @@ async def retries_with_tenacity[R](
     ):
         with attempt:
             try:
-                # TODO: coro можно await только один раз - ошибка при перезапусках; нужен callable с args и kwargs
-                return await coro
+                return await func(*args, **kwargs)
 
             except FragmentAPITooManyRequests as err:
                 time_to_sleep = float(err.retry_after) if err.retry_after is not None else 10.0
@@ -56,4 +55,4 @@ async def retries_with_tenacity[R](
                     await asyncio.sleep(time_to_sleep)
                 raise err
 
-    return await coro
+    return await func(*args, **kwargs)

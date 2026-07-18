@@ -77,7 +77,7 @@ async def _handle_destination_choose_payment(
     ctx = get_view_context(context)
     stars_count = cast(int, ctx.order.quantity)  # noqa
     active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
     _ = await show_payment_methods(update, context, stars_count, active_promo, ctx.order.target_username)
     return BotConversationState.CHOOSE_PAYMENT
@@ -94,7 +94,7 @@ async def _handle_destination_profile(
     profile_data = ctx.profile_data
     if profile_data is None:
         profile_data = await db_action_with_tenacity(
-            user_service.get_profile_data(update.effective_user.id)
+            user_service.get_profile_data, update.effective_user.id
         )
     _ = await show_profile_page(update, context, profile_data)
     return BotConversationState.PROFILE

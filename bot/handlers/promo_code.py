@@ -42,7 +42,7 @@ async def _handle_promo_input_request_helper(
         promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
     _ = await show_enter_promo(update, context, active_promo)
     return BotConversationState.ENTER_PROMO
@@ -68,11 +68,11 @@ async def _handle_promo_code_cancel_helper(
         user_service: FromDishka[UserService], promo_service: FromDishka[PromoCodeService]
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     _ = await db_action_with_tenacity(
-        user_service.update_active_promo(update.effective_user.id, None)
+        user_service.update_active_promo, update.effective_user.id, None
     )
 
     active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
 
     _ = await show_enter_promo(update, context, active_promo)
@@ -103,7 +103,7 @@ async def _handle_enter_promo_helper(
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     promo_name = cast(str, update.message.text)  # noqa
     found_promo = await db_action_with_tenacity(
-        promo_service.get_promo_by_name(promo_name)
+        promo_service.get_promo_by_name, promo_name
     )
 
     if found_promo is None:
@@ -124,7 +124,7 @@ async def _handle_enter_promo_helper(
 
     try:
         transactions_with_promo, tx_with_promo_count = await db_action_with_tenacity(
-            trans_service.get_processing_or_succeeded_transactions(found_promo.id)
+            trans_service.get_processing_or_succeeded_transactions, found_promo.id
         )
 
         usage_left_account = 9999
@@ -148,7 +148,7 @@ async def _handle_enter_promo_helper(
 
         if found_promo.usage_global is not None:
             users_with_promo_count = await db_action_with_tenacity(
-                user_service.get_users_with_promo_id_count(found_promo.id)
+                user_service.get_users_with_promo_id_count, found_promo.id
             )
 
             usage_global = users_with_promo_count + tx_with_promo_count
@@ -165,7 +165,7 @@ async def _handle_enter_promo_helper(
             usage_left_account = min(usage_left_account, found_promo.usage_global - usage_global)
 
         _ = await db_action_with_tenacity(
-            user_service.update_active_promo(update.effective_user.id, found_promo)
+            user_service.update_active_promo, update.effective_user.id, found_promo
         )
 
         _ = await show_promo_success(

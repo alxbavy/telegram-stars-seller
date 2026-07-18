@@ -39,7 +39,7 @@ from bot.states import BotConversationState
 
 from core.integrations.fragment.client import FragmentClient
 from core.integrations.utils import retries_with_tenacity
-from core.repositories.utils import db_action_with_tenacity
+from core.repositories.utils import db_action_with_tenacity, db_action_or_exception_with_tenacity
 from core.services.payment import PaymentService
 from core.services.promo_code import PromoCodeService
 from core.services.support import SupportService
@@ -157,7 +157,7 @@ async def _handle_recipient_mode_helper(
         stars_count = cast(int, ctx.order.quantity)  # noqa
 
         active_promo = await db_action_with_tenacity(
-            promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+            promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
         )
 
         _ = await show_payment_methods(
@@ -215,7 +215,7 @@ async def _handle_gift_username_helper(
         msg_searching = await show_searching_username(update, context, username)
 
         is_found = await retries_with_tenacity(
-            fragment_client.resolve_username(username, timeout=30.0, connect=10.0)
+            fragment_client.resolve_username, username, timeout=30.0, connect=10.0
         )
 
         _ = await delete_message(msg_searching)
@@ -229,7 +229,7 @@ async def _handle_gift_username_helper(
         stars_count = cast(int, ctx.order.quantity)  # noqa
 
         active_promo = await db_action_with_tenacity(
-            promo_service.get_active_promo_for_telegram_user_id(user_id)
+            promo_service.get_active_promo_for_telegram_user_id, user_id
         )
 
         _ = await show_payment_methods(update, context, stars_count, active_promo, username)
@@ -274,7 +274,7 @@ async def _handle_payment_method_helper(
         raise AttributeError("order stars amount is None")
 
     active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
 
     _ = await show_order_confirmation(
@@ -312,7 +312,7 @@ async def _handle_order_confirmed_helper(
         return BotConversationState.ORDER_CONFIRMATION
 
     # Если maintenance_mode, выбросится исключение для обработки в error_handler
-    await db_action_with_tenacity(payment_service.ensure_no_maintenance_mode())
+    await db_action_with_tenacity(payment_service.ensure_no_maintenance_mode)
 
     amount_stars = ctx.order.quantity
     price = ctx.order.price
@@ -331,7 +331,7 @@ async def _handle_order_confirmed_helper(
     # TODO: сделать механизм удержания баланса
     # Если не получится определить, хватает ли средств для перевода звёзд, выбросится исключение для обработки в error_handler
     await retries_with_tenacity(
-        fragment_client.check_is_enough_currency_for_stars(amount_stars, timeout=30.0, connect=10.0)
+        fragment_client.check_is_enough_currency_for_stars, amount_stars, timeout=30.0, connect=10.0
     )
 
     try:
@@ -345,14 +345,14 @@ async def _handle_order_confirmed_helper(
         raise KeyboardMethodError("Внешний ID метода оплаты должен быть целым числом для используемого API")
 
     active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id(update.effective_user.id)
+        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
 
     order_msg = update.effective_message
     if order_msg is None:
         raise RuntimeError("По какой-то причине сообщение заказа отсутствует при создании заказа")
 
-    payment_dto, parsed_payload = await db_action_with_tenacity(payment_service.create_payment(
+    payment_dto, parsed_payload = await db_action_with_tenacity(payment_service.create_payment,
         user_id=update.effective_user.id,
         message_id=order_msg.message_id,
         price=price,
@@ -361,7 +361,7 @@ async def _handle_order_confirmed_helper(
         method=method_id,
         target_username=ctx.order.target_username,
         promo=active_promo
-    ))
+    )
 
     pay_url = payment_dto.pay_url
     if pay_url is None:
@@ -370,12 +370,12 @@ async def _handle_order_confirmed_helper(
 
     parsed_payload["pay_url"] = pay_url
 
-    _ = await db_action_with_tenacity(transaction_service.create_transaction(
+    _ = await db_action_with_tenacity(transaction_service.create_transaction,
         payment_dto.transaction_id,
         parsed_payload,
         payment_method=f"{method_api} - {method_id}",
         expires_in=payment_dto.expires_in
-    ))
+    )
 
     ctx.order.checkout_transaction_id = str(payment_dto.transaction_id)
     ctx.order.checkout_url = payment_dto.pay_url
@@ -389,10 +389,10 @@ async def _handle_order_confirmed_helper(
     if msg is None:
         raise RuntimeError(f"Не получилось изменить сообщение с id {order_msg.message_id}")
 
-    db_action = await db_action_with_tenacity(
-        transaction_service.save_message_id(payment_dto.transaction_id, msg.message_id), suppress_exc=True
+    db_action = await db_action_or_exception_with_tenacity(
+        transaction_service.save_message_id, payment_dto.transaction_id, msg.message_id
     )
-    if db_action is None:
+    if isinstance(db_action, Exception):
         is_changed_successfully = False
     else:
         is_changed_successfully, _ = db_action
@@ -408,7 +408,7 @@ async def _handle_order_confirmed_helper(
             raise RuntimeError(f"Не получилось изменить сообщение с id {order_msg.message_id}")
 
         _ = await db_action_with_tenacity(
-            user_service.update_active_promo(update.effective_user.id, None)
+            user_service.update_active_promo, update.effective_user.id, None
         )
 
         return BotConversationState.ORDER_CONFIRMED

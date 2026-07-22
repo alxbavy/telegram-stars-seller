@@ -82,7 +82,13 @@ async def access_granted_or_http_response(request: HttpRequest, webhook_name: Se
 
 
 def parse_platega_payload(data: PlategaWebhookRequestJSON) -> PaymentPayloadDict | None:
-    parsed_payload = cast(object, json.loads(data["payload"]))
+    try:
+        parsed_payload = cast(object, json.loads(data["payload"]))
+    except Exception as err:
+        if data.get("payload", ""):
+            logger.exception(f"Couldn't json.loads payload from Platega request:\n{err = }")
+        return None
+
     if not isinstance(parsed_payload, dict):
         logger.exception("Request from Platega contains payload which is not a dict")
         return None

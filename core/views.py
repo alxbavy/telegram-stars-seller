@@ -6,7 +6,8 @@ from random import randint
 from typing import cast
 
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpRequest, HttpResponse
+from django.contrib.auth.models import User
+from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.fragment.tasks import update_fragment_tx_task
@@ -134,3 +135,16 @@ async def test_webhook(request: HttpRequest) -> HttpResponse:
     print(json.dumps(headers, indent=2))
 
     return HttpResponse(status=200)
+
+
+@csrf_exempt
+async def health(_: HttpRequest) -> HttpResponse:
+    try:
+        __ = await User.objects.aexists()
+        return JsonResponse({"status": "healthy"}, status=200)
+
+    except Exception as exc:
+        return JsonResponse(
+            {"status": "unhealthy", "detail": str(exc)},
+            status=503
+        )

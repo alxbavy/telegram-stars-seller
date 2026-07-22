@@ -30,27 +30,6 @@ class _MessageInfo:
         object.__setattr__(self, "target_username", f"@{self.target_username.lstrip("@")}")
 
 
-@final
-class _MessagePartsRegistry:
-    def __init__(self):
-        self._registry = {
-            TransactionStatus.SUCCESS: _get_message_parts_for_success,
-            TransactionStatus.PENDING: _get_message_parts_for_pending,
-            TransactionStatus.IN_DOUBT: _get_message_parts_for_in_doubt,
-            TransactionStatus.FAILED: _get_message_parts_for_failed,
-            TransactionStatus.CANCELLED: _get_message_parts_for_cancelled,
-        }
-        for status in PROCESSING_STATUSES:
-            self._registry[status] = _get_message_parts_for_processing_statuses
-
-    def __getitem__(self, item: str) -> Callable[[_MessageInfo], tuple[str, InlineKeyboardMarkup | None, str]]:
-        item = cast(TransactionStatus, item)
-        return self._registry.get(item, _get_message_parts_for_unknown)
-
-
-_MESSAGE_PARTS_REGISTRY = _MessagePartsRegistry()
-
-
 def get_message_parts_for_status(
         status: TransactionStatus,
         amount_stars: int,
@@ -160,3 +139,24 @@ def _get_message_parts_for_unknown(msg_info: _MessageInfo) -> tuple[str, InlineK
     reply_markup = build_error_kb(msg_info.support_url)
     photo = "delivery_unknown.jpg"
     return text, reply_markup, photo
+
+
+@final
+class _MessagePartsRegistry:
+    def __init__(self):
+        self._registry = {
+            TransactionStatus.SUCCESS: _get_message_parts_for_success,
+            TransactionStatus.PENDING: _get_message_parts_for_pending,
+            TransactionStatus.IN_DOUBT: _get_message_parts_for_in_doubt,
+            TransactionStatus.FAILED: _get_message_parts_for_failed,
+            TransactionStatus.CANCELLED: _get_message_parts_for_cancelled,
+        }
+        for status in PROCESSING_STATUSES:
+            self._registry[status] = _get_message_parts_for_processing_statuses
+
+    def __getitem__(self, item: str) -> Callable[[_MessageInfo], tuple[str, InlineKeyboardMarkup | None, str]]:
+        item = cast(TransactionStatus, item)
+        return self._registry.get(item, _get_message_parts_for_unknown)
+
+
+_MESSAGE_PARTS_REGISTRY = _MessagePartsRegistry()

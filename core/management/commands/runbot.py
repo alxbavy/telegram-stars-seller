@@ -1,4 +1,5 @@
 import os
+# import socket
 import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -38,13 +39,20 @@ type DefaultApplication = Application[
 @final
 class Command(BaseCommand):
     help = "Запуск Telegram бота"
-    # Настройка кастомных тайм-аутов (в секундах)
+    # TODO: проверить работу с сокетами
     request_config = HTTPXRequest(
-        connection_pool_size=20,  # Кол-во открытых соединений
-        connect_timeout=20.0,     # Время на установку соединения
-        read_timeout=25.0,        # Время ожидания ответа от серверов Telegram
-        write_timeout=25.0,       # Время на отправку данных (обычный текст)
-        media_write_timeout=60.0  # Время на загрузку тяжелых файлов/медиа
+        http_version="1.1",
+        connection_pool_size=20,    # Кол-во открытых соединений
+        connect_timeout=20.0,       # Время на установку соединения
+        read_timeout=25.0,          # Время ожидания ответа от серверов Telegram
+        write_timeout=25.0,         # Время на отправку данных (обычный текст)
+        media_write_timeout=60.0,   # Время на загрузку тяжелых файлов/медиа
+        # socket_options=[
+        #     (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10),  # Пинг после 15 сек простоя
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3),  # Интервал повтора пинга
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)     # Кол-во попыток
+        # ]
     )
 
     async def post_init(self, application: DefaultApplication) -> None:

@@ -99,7 +99,7 @@ class Transaction(models.Model):
         verbose_name="Покупатель"
     )
     amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Со скидкой (если есть)")
-    amount_stars = models.IntegerField(verbose_name="Количество звезд")
+    amount_stars = models.IntegerField(verbose_name="Звёзды")
     target_username = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
     status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
     message_id = models.IntegerField(default=-1, blank=True, verbose_name="ID сообщения заказа", help_text="Нужно для вебхука")
@@ -289,8 +289,8 @@ class ExchangeRate(SingletonModel):
 class FragmentAPI(SingletonModel):
     objects = models.Manager()
 
+    # У fragment-api есть комиссия при переводах 0.5%, в данный момент она не учитывается при расчёте цен
     token = models.TextField(blank=True, help_text="Можно получить в Dashboard на fragment-api.com/dashboard")
-    # TODO: добавить поле для комиссии (админка, расчёт цены с подтягиванием цены в ton с фрагмента)
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @classmethod
@@ -306,10 +306,5 @@ class FragmentAPI(SingletonModel):
         verbose_name = "Токен для FragmentAPI"
 
 
-# TODO: Вроде бы не надо, так как для Persistence будет PicklePersistence
-class BotState(models.Model):
-    objects = models.Manager()
 
-    user_id = models.BigIntegerField(unique=True)
-    data = models.JSONField(default=dict)
-    state = models.TextField(null=True)
+# TODO: можно сделать таблицу для file_id изображений сообщений, чтобы оптимизировать трафик (разобраться вместе с Gemini)

@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from typing import final, override
 from collections.abc import Mapping
 
@@ -18,9 +19,10 @@ from core.models import (
 )
 
 
-class TransactionTypeMixin:
+
+class TransactionMetadataMixin:
+    """Миксин для названий полей из связанной модели метаданных транзакции."""
     def transaction_type(self, obj: Transaction) -> str:
-        """Достаем человекочитаемое название типа из связанной модели"""
         try:
             return obj.metadata_info.get_type_display()
         except TransactionMetadata.DoesNotExist:
@@ -28,13 +30,41 @@ class TransactionTypeMixin:
     transaction_type.short_description = "Тип"
     transaction_type.admin_order_field = "metadata_info__type"
 
+    def promo_id(self, obj: Transaction) -> int | None | str:
+        try:
+            return obj.metadata_info.promo_id
+        except TransactionMetadata.DoesNotExist:
+            return "—"
+    promo_id.short_description = "ID промо"
+    promo_id.admin_order_field = "metadata_info__promo_id"
+
+    def promo_name(self, obj: Transaction) -> str:
+        try:
+            return obj.metadata_info.promo_name
+        except TransactionMetadata.DoesNotExist:
+            return "—"
+    promo_name.short_description = "Имя промо"
+    promo_name.admin_order_field = "metadata_info__promo_name"
+
+    def promo_discount(self, obj: Transaction) -> Decimal | None | str:
+        try:
+            return obj.metadata_info.promo_discount
+        except TransactionMetadata.DoesNotExist:
+            return "—"
+    promo_discount.short_description = "Скидка% промо"
+    promo_discount.admin_order_field = "metadata_info__promo_discount"
+
+
 
 @final
-class TransactionInline(admin.TabularInline, TransactionTypeMixin):
+class TransactionInline(admin.TabularInline, TransactionMetadataMixin):
     """Инлайн для отображения транзакций в карточке пользователя"""
     model: type[Transaction] = Transaction
-    readonly_fields = ("id", "target_username", "amount_stars", "amount_fiat",
-                       "status", "transaction_type", "created_at", "expires_at", "updated_at")
+    readonly_fields = (
+        "id", "target_username", "amount_stars", "amount_fiat", "status", "transaction_type",
+        "promo_name", "promo_discount", "promo_id",
+        "created_at", "expires_at", "updated_at"
+    )
     show_change_link = True
     can_delete = False
     ordering = ("-created_at",)
@@ -83,7 +113,7 @@ class TelegramUserAdmin(admin.ModelAdmin):
     )
     ordering = ("-created_at", )
     search_fields = ("username", "telegram_id", "active_promo__name")
-    search_help_text = "Поиск по имени пользователя или ID"
+    search_help_text = "Поиск по имени пользователя или ID и имени промокода"
     list_filter = (
         ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
         ("promo_since", admin.DateFieldListFilter)
@@ -118,19 +148,27 @@ class TransactionMetadataInline(admin.StackedInline):
         ).__class__: {"widget": PrettyJSONWidget}
     }
 
+    @override
+    def has_change_permission(self, request: HttpRequest, obj: object | None = None): return False
+
 
 @final
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
-    list_display = ("id", "telegram_user", "amount_stars", "amount_fiat", "target_username",
-                    "status", "transaction_type", "created_at", "expires_at", "updated_at")
+class TransactionAdmin(admin.ModelAdmin, TransactionMetadataMixin):
+    list_display = (
+        "id", "telegram_user", "amount_stars", "amount_fiat", "target_username", "status", "transaction_type",
+        "promo_name", "promo_discount", "promo_id",
+        "created_at", "expires_at", "updated_at"
+    )
     ordering = ("-created_at", )
     list_filter = (
         "status", ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
         ("expires_at", admin.DateFieldListFilter)
     )
-    search_fields = ("telegram_user__username", "telegram_user__telegram_id")
-    search_help_text = "Поиск по имени пользователя или ID"
+    search_fields = (
+        "telegram_user__username", "telegram_user__telegram_id", "metadata_info__promo_name"
+    )
+    search_help_text = "Поиск по имени пользователя или ID и имени промокода"
     readonly_fields = ("created_at", "expires_at", "updated_at")
     readonly_fields_when_created = ("id",)
     inlines = [TransactionMetadataInline]
@@ -146,7 +184,7 @@ class TransactionAdmin(admin.ModelAdmin, TransactionTypeMixin):
 @final
 class PaymentMethodInline(admin.TabularInline):
     model: type[PaymentMethod] = PaymentMethod
-    list_display = ("name", "commission_percent", "external_id", "is_active")
+    fields = ("name", "commission_percent", "external_id", "is_active")
     extra = 0
 
 

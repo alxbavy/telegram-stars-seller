@@ -2,7 +2,7 @@ import os
 import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+# from pathlib import Path
 from typing import final, override
 
 from django.conf import settings
@@ -14,12 +14,13 @@ from telegram.ext import (
     JobQueue,
     ContextTypes,
     TypeHandler,
-    PicklePersistence, PersistenceInput
+    # PicklePersistence, PersistenceInput
 )
 from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
 from bot.handlers.error import error_handler
+from bot.middlewares.chat import enforce_private_chats_only_or_admin_chat
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 
@@ -120,7 +121,12 @@ class Command(BaseCommand):
 
         application.add_error_handler(error_handler)  # noqa
 
-        application.add_handler(TypeHandler(Update, register_user_middleware), group=-1)
+        application.add_handler(
+            TypeHandler(Update, enforce_private_chats_only_or_admin_chat), group=-2
+        )
+        application.add_handler(
+            TypeHandler(Update, register_user_middleware), group=-1
+        )
         application.add_handler(get_conversation_handler())
 
         if settings.DEBUG:

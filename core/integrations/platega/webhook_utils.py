@@ -422,9 +422,9 @@ async def safe_notify_user_about_status_with_retries(
         celery_task, started_at, kwargs, 30.0, transaction_id
     )
 
-    text, reply_markup, photo_name = get_message_parts_for_status(
+    text, reply_markup, photo_name = await get_message_parts_for_status(
         cast(TransactionStatus, status), amount_stars, Decimal(price),
-        target_username, transaction_id, pay_url,
+        target_username, user_id, transaction_id, pay_url,
         promo_name, promo_discount,
         support_url
     )

@@ -21,7 +21,11 @@ async def show_enter_promo(update: Update, active_promo: PromoCode | None) -> Me
         }"
         f"(Регистр букв важен; одновременно может быть активен только один промокод)"
     )
-    return await render_screen(update, text, reply_markup=build_promo_kb(active_promo), photo_name="input_promo.jpg")
+    return await render_screen(
+        update, text,
+        reply_markup=await build_promo_kb(update.effective_user.id, active_promo),
+        photo_name="input_promo.jpg"
+    )
 
 
 @autosave_active_conversation
@@ -40,7 +44,11 @@ async def show_promo_success(update: Update, promo: PromoCode, usage_left_accoun
         f"Осталось применений — <b>{promo_applying}</b>\n\n"
         f"Промокод отменится сам, если не использовать его в течение суток, либо можно отменить самому — он не потратится"
     )
-    return await render_screen(update, text, build_promo_kb(promo))
+    return await render_screen(
+        update, text,
+        reply_markup=await build_promo_kb(update.effective_user.id, promo),
+        photo_name=None
+    )
 
 
 async def show_promo_not_found(update: Update, promo_name: str) -> Message:

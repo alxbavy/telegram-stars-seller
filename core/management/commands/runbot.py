@@ -121,7 +121,6 @@ class Command(BaseCommand):
             ApplicationBuilder()  # pyright: ignore[reportUnknownMemberType]
             .token(token)
             .request(self.request_config)
-            .arbitrary_callback_data(True)
             .post_init(self.post_init)
             .post_stop(self.post_stop)
             .build()

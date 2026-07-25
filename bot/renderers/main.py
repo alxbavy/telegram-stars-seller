@@ -12,7 +12,11 @@ async def show_main_menu(update: Update) -> Message:
         "Звёзды <b>дешевле</b>, чем в самом <b>Telegram</b>!\n"
         "Бери себе или дари друзьям ;)"
     )
-    return await render_screen(update, text, build_main_menu_kb(), "main_menu.jpg")
+    return await render_screen(
+        update, text,
+        reply_markup=await build_main_menu_kb(update.effective_user.id),
+        photo_name="main_menu.jpg"
+    )
 
 
 async def send_empty_username_alert(update: Update) -> Message:
@@ -26,5 +30,6 @@ async def send_empty_username_alert(update: Update) -> Message:
     return await send_new_message(update, text, reply_markup=None, photo_name=None)
 
 
-# TODO: настроить взаимодействие только через личные чаты и т.д. (см. чат в гугле)
 # TODO: сделать проверку подписки на канал на каждом шаге (либо почти на каждом - продумать)
+# TODO: добавить уведомления о новых заказах в админскую группу
+# TODO: добавить конструктор рассылок в админскую группу

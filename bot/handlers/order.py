@@ -8,9 +8,7 @@ from typing import Literal, cast, overload
 from dishka import FromDishka
 
 from telegram import Update, Message
-from telegram.ext import ContextTypes
-
-from general_utils import cast_force
+from telegram.ext import ContextTypes, ConversationHandler
 
 from bot.handlers.start import running_users
 
@@ -19,6 +17,7 @@ from bot.keyboards.error import KeyboardMethodError
 from bot.renderers.base import delete_message
 from bot.renderers.main import send_empty_username_alert
 from bot.renderers.order import (
+    send_small_order_error,
     show_choose_recipient,
     show_custom_quantity_input,
     edit_order_creating_failed_message,
@@ -32,7 +31,7 @@ from bot.renderers.order import (
 )
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
-from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, FixedQuantityCallback
+from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, FixedQuantityCallback, manage_callback_data
 from bot.context import get_view_context
 from bot.enums import RecipientMode
 from bot.states import BotConversationState
@@ -54,13 +53,17 @@ logger = logging.getLogger(__name__)
 @ensure_use_active_conversation_with_callback
 async def handle_fixed_quantity(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.CHOOSE_RECIPIENT]:
-    cb_data = cast_force(FixedQuantityCallback, update.callback_query.data)
-    ctx = get_view_context(context)
-    ctx.order.quantity = cb_data.amount
+) -> Literal[BotConversationState.CHOOSE_RECIPIENT] | int:
+    async with manage_callback_data(update, FixedQuantityCallback) as cb_data:
+        if isinstance(cb_data, int):
+            assert cb_data == ConversationHandler.END
+            return cb_data
 
-    _ = await show_choose_recipient(update, context)
-    return BotConversationState.CHOOSE_RECIPIENT
+        ctx = get_view_context(context)
+        ctx.order.quantity = cb_data.amount
+
+        _ = await show_choose_recipient(update, context)
+        return BotConversationState.CHOOSE_RECIPIENT
 
 
 @ensure_use_active_conversation_with_callback
@@ -107,6 +110,7 @@ async def _handle_custom_quantity_input_helper(
         amount = int(text)
 
         if amount < 50:
+            _ = await send_small_order_error(update)
             return BotConversationState.CUSTOM_QUANTITY_INPUT
 
         if amount > 10000:  # Условный лимит
@@ -138,7 +142,7 @@ async def handle_custom_quantity_input(
 @overload
 async def _handle_recipient_mode_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]: ...
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME] | int: ...
 
 
 @inject
@@ -146,39 +150,41 @@ async def _handle_recipient_mode_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         promo_service: FromDishka[PromoCodeService]
-) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]:
-    cb_data = cast_force(RecipientModeCallback, update.callback_query.data)
-    ctx = get_view_context(context)
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME] | int:
+    async with manage_callback_data(update, RecipientModeCallback) as cb_data:
+        if isinstance(cb_data, int):
+            assert cb_data == ConversationHandler.END
+            return cb_data
 
-    ctx.order.recipient_mode = cb_data.mode
-    if cb_data.mode == RecipientMode.SELF:
-        # Нужно указывать пустым, так как сюда можно вернуться с предыдущих шагов, где он мог быть заполнен
-        ctx.order.target_username = ""
-        stars_count = cast(int, ctx.order.quantity)  # noqa
+        ctx = get_view_context(context)
+        ctx.order.recipient_mode = cb_data.mode
 
-        active_promo = await db_action_with_tenacity(
-            promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
-        )
+        if cb_data.mode == RecipientMode.SELF:
+            # Нужно указывать пустым, так как сюда можно вернуться с предыдущих шагов, где он мог быть заполнен
+            ctx.order.target_username = ""
+            stars_count = cast(int, ctx.order.quantity)  # noqa
 
-        _ = await show_payment_methods(
-            update, context,
-            stars_count,
-            active_promo,
-            ctx.order.target_username
-        )
+            active_promo = await db_action_with_tenacity(
+                promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
+            )
 
-        return BotConversationState.CHOOSE_PAYMENT
+            _ = await show_payment_methods(
+                update, context,
+                stars_count,
+                active_promo,
+                ctx.order.target_username
+            )
+            return BotConversationState.CHOOSE_PAYMENT
 
-    else:
-        _ = await show_enter_username(update, context)
-
-        return BotConversationState.ENTER_GIFT_USERNAME
+        else:
+            _ = await show_enter_username(update, context)
+            return BotConversationState.ENTER_GIFT_USERNAME
 
 
 @ensure_use_active_conversation_with_callback
 async def handle_recipient_mode(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME]:
+) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME] | int:
     return await _handle_recipient_mode_helper(update, context)
 
 
@@ -224,7 +230,7 @@ async def _handle_gift_username_helper(
             _ = await show_user_not_found(update, context, username)
             return BotConversationState.ENTER_GIFT_USERNAME
 
-        ctx.order.target_username = username
+        ctx.order.target_username = username.lstrip("@")
 
         stars_count = cast(int, ctx.order.quantity)  # noqa
 
@@ -250,7 +256,7 @@ async def handle_gift_username(
 @overload
 async def _handle_payment_method_helper(  # noqa  # pyright: ignore[reportInconsistentOverload]
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ORDER_CONFIRMATION]: ...
+) -> Literal[BotConversationState.ORDER_CONFIRMATION] | int: ...
 
 
 @inject
@@ -258,36 +264,39 @@ async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         promo_service: FromDishka[PromoCodeService]
-) -> Literal[BotConversationState.ORDER_CONFIRMATION]:
-    ctx = get_view_context(context)
-    cb_data = cast_force(PaymentMethodCallback, update.callback_query.data)
+) -> Literal[BotConversationState.ORDER_CONFIRMATION] | int:
+    async with manage_callback_data(update, PaymentMethodCallback) as cb_data:
+        if isinstance(cb_data, int):
+            assert cb_data == ConversationHandler.END
+            return cb_data
 
-    stars = ctx.order.quantity
-    price = cb_data.price
+        ctx = get_view_context(context)
 
-    ctx.order.price = str(price)
-    ctx.order.payment_method = cb_data.method
-    ctx.order.payment_external_id = cb_data.method_external_id
-    ctx.order.payment_api = cb_data.method_api
+        stars = ctx.order.quantity
+        if stars is None:
+            raise AttributeError("order stars amount is None")
+        price = cb_data.price
 
-    if stars is None:
-        raise AttributeError("order stars amount is None")
+        ctx.order.price = str(price)
+        ctx.order.payment_method = cb_data.method
+        ctx.order.payment_external_id = cb_data.method_external_id
+        ctx.order.payment_api = cb_data.method_api
 
-    active_promo = await db_action_with_tenacity(
-        promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
-    )
+        active_promo = await db_action_with_tenacity(
+            promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
+        )
 
-    _ = await show_order_confirmation(
-        update, context,
-        stars, price, ctx.order.target_username, active_promo
-    )
-    return BotConversationState.ORDER_CONFIRMATION
+        _ = await show_order_confirmation(
+            update, context,
+            stars, price, ctx.order.target_username, active_promo
+        )
+        return BotConversationState.ORDER_CONFIRMATION
 
 
 @ensure_use_active_conversation_with_callback
 async def handle_payment_method(
         update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> Literal[BotConversationState.ORDER_CONFIRMATION]:
+) -> Literal[BotConversationState.ORDER_CONFIRMATION] | int:
     return await _handle_payment_method_helper(update, context)
 
 

@@ -3,9 +3,7 @@ from typing import cast
 from dishka import FromDishka
 
 from telegram import Update
-from telegram.ext import ContextTypes
-
-from general_utils import cast_force
+from telegram.ext import ContextTypes, ConversationHandler
 
 from bot.handlers.start import start_handler
 
@@ -22,7 +20,7 @@ from bot.utils.active_conversation import ensure_use_active_conversation_with_ca
 from bot.utils.handlers_registry import build_async_handlers_register
 from bot.utils.type_aliases import UpdateWithContextHandler
 
-from bot.callbacks import BackCallback
+from bot.callbacks import BackCallback, manage_callback_data
 from bot.context import clear_profile_data, clear_temporary_messages, get_view_context
 from bot.enums import BackDestination
 from bot.states import BotConversationState
@@ -115,6 +113,11 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
 
     await clear_temporary_messages(context)
-    cb_data = cast_force(BackCallback, update.callback_query.data)
-    handler = back_destination_registry[cb_data.destination]
-    return await handler(update, context)
+
+    async with manage_callback_data(update, BackCallback) as cb_data:
+        if isinstance(cb_data, int):
+            assert cb_data == ConversationHandler.END
+            return cb_data
+
+        handler = back_destination_registry[cb_data.destination]
+        return await handler(update, context)

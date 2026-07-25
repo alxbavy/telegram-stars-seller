@@ -1,29 +1,44 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.callbacks import BackCallback, ProfileMenuCallback, HistoryPageCallback
+from bot.callbacks import BackCallback, ProfileMenuCallback, HistoryPageCallback, create_callback
 from bot.enums import BackDestination, ProfileAction
 
 
-def build_profile_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-            InlineKeyboardButton("📦 История заказов", callback_data=ProfileMenuCallback(ProfileAction.HISTORY)),
-        ],[InlineKeyboardButton("◀️ Назад", callback_data=BackCallback(BackDestination.MAIN_MENU))]
+async def build_profile_kb(telegram_id: int, ) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "📦 История заказов",
+            callback_data=await create_callback(telegram_id, ProfileMenuCallback(ProfileAction.HISTORY))
+        )],
+        [InlineKeyboardButton(
+            "◀️ Назад",
+            callback_data=await create_callback(telegram_id, BackCallback(BackDestination.MAIN_MENU))
+        )]
     ])
 
 
-def build_order_history_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
-    nav_buttons = []
+async def build_order_history_kb(telegram_id: int, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    nav_buttons: list[InlineKeyboardButton] = []
 
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️ Назад", callback_data=HistoryPageCallback(page - 1)))
+        nav_buttons.append(InlineKeyboardButton(
+            "⬅️ Назад",
+            callback_data=await create_callback(telegram_id, HistoryPageCallback(page - 1))
+        ))
 
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Вперёд ➡️", callback_data=HistoryPageCallback(page + 1)))
+        nav_buttons.append(InlineKeyboardButton(
+            "Вперёд ➡️",
+            callback_data=await create_callback(telegram_id, HistoryPageCallback(page + 1))
+        ))
 
-    keyboard = []
+    keyboard: list[list[InlineKeyboardButton]] = []
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([InlineKeyboardButton("◀️ Назад в профиль", callback_data=BackCallback(BackDestination.PROFILE))])
+    keyboard.append([InlineKeyboardButton(
+        "◀️ Назад в профиль",
+        callback_data=await create_callback(telegram_id, BackCallback(BackDestination.PROFILE))
+    )])
 
     return InlineKeyboardMarkup(keyboard)

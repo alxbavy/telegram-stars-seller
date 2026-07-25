@@ -19,14 +19,33 @@ from celery import Task
 logger = logging.getLogger(__name__)
 
 
-redis_client: sync_Redis = sync_from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+_URL = cast(str, settings.CELERY_BROKER_URL)
+_CONNECT_TIMEOUT = 15.0
+_TIMEOUT = 25.0
+_KEEPALIVE = True
+_DECODE_RESPONSES = True
+
+
+redis_client: sync_Redis = sync_from_url(
+    _URL,
+    socket_connect_timeout=_CONNECT_TIMEOUT,
+    socket_timeout=_TIMEOUT,
+    socket_keepalive=_KEEPALIVE,
+    decode_responses=_DECODE_RESPONSES
+)
 _async_redis_client: async_Redis | None = None
 
 
 def get_async_redis_client() -> async_Redis:
     global _async_redis_client
     if _async_redis_client is None:
-        _async_redis_client = async_from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+        _async_redis_client = async_from_url(
+            _URL,
+            socket_connect_timeout=_CONNECT_TIMEOUT,
+            socket_timeout=_TIMEOUT,
+            socket_keepalive=_KEEPALIVE,
+            decode_responses=_DECODE_RESPONSES
+        )
     return _async_redis_client
 
 

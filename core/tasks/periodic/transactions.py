@@ -39,7 +39,7 @@ def _delete_cancelled_two_weeks_ago_transactions(
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def cleanup_two_week_cancelled_transactions_task(self: Task[P,R], *, started_at: float | None) -> str:
+def cleanup_two_week_cancelled_transactions_task(self: Task[P,R], *, started_at: float | None = None) -> str:
     """Удаляет все транзакции со статусом CANCELLED, которые были обновлены более 14 дней назад."""
 
     kwargs = cast(dict[str, object], self.request.kwargs or {}).copy()  # noqa
@@ -56,7 +56,5 @@ def cleanup_two_week_cancelled_transactions_task(self: Task[P,R], *, started_at:
         return f"transactions deletion timed out"
 
     deleted_count, _ = result
-    if deleted_count > 0:
-        logger.info(f"Сборка мусора: удалено {deleted_count} отмененных транзакций")
 
-    return f"deleted {deleted_count} transactions"
+    return f"Сборка мусора: удалено {deleted_count} отмененных транзакций"

@@ -39,7 +39,7 @@ def _deactivate_unused_promo_codes(
 
 
 @shared_task(bind=True, acks_late=True, max_retries=100)
-def deactivate_unused_promo_codes_task(self: Task[P,R], *, started_at: float | None) -> str:
+def deactivate_unused_promo_codes_task(self: Task[P,R], *, started_at: float | None = None) -> str:
     """Деактивирует у пользователей активные промокоды, которые были активированы больше суток назад."""
 
     kwargs = cast(dict[str, object], self.request.kwargs or {}).copy()  # noqa
@@ -55,7 +55,4 @@ def deactivate_unused_promo_codes_task(self: Task[P,R], *, started_at: float | N
 
     deactivated_promos_count = result
 
-    if deactivated_promos_count > 0:
-        logger.info(f"Сборка мусора: деактивировано {deactivated_promos_count} неиспользованных промокодов")
-
-    return f"deactivated {deactivated_promos_count} promo codes"
+    return f"Сборка мусора: деактивировано {deactivated_promos_count} неиспользованных промокодов"

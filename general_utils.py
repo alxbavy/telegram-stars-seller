@@ -8,7 +8,7 @@ from typing import cast, override
 logger = logging.getLogger(__name__)
 
 
-def cast_force[C](_: type[C], source: object) -> C:
+def cast_force[C](_: type[C], source: object, /) -> C:
     return cast(C, source)  # noqa
 
 

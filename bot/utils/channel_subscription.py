@@ -1,0 +1,59 @@
+from functools import wraps
+
+from django.conf import settings
+
+from telegram import ChatMember, Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram.ext import ContextTypes
+from telegram.constants import ChatMemberStatus
+from telegram.error import Forbidden, TelegramError
+
+from tenacity import retry
+
+from bot.renderers.base import send_new_message
+from bot.utils.type_aliases import UpdateWithContextHandler
+
+from core.domain.tenacity_utils import TelegramRetryConfig
+
+
+_retry_config = TelegramRetryConfig().asdict
+
+
+@retry(**_retry_config)
+async def get_chat_member(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> ChatMember:
+    return await context.bot.get_chat_member(chat_id=settings.CHANNEL_ID, user_id=user_id)  # pyright: ignore[reportAny]
+
+
+async def is_user_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user_id = update.effective_user.id
+
+    try:
+        member = await get_chat_member(context, user_id)
+        if member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+            return True
+
+    except TelegramError as exc:
+        if not isinstance(exc, Forbidden) and type(exc) is not TelegramError:
+            raise exc
+
+    return False
+
+
+def require_subscription[**P,R](func: UpdateWithContextHandler[P,R]):  # TODO: повесить декоратор везде, где нужно
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args: P.args, **kwargs: P.kwargs) -> R | Message:
+        if await is_user_subscribed(update, context):
+            return await func(update, context, *args, **kwargs)
+
+        keyboard = [
+            [InlineKeyboardButton("🔮 Перейти в канал", url=settings.CHANNEL_LINK)],  # pyright: ignore[reportAny]
+            [InlineKeyboardButton("✅ Я подписался", callback_data="check_sub")]  # TODO: добавить нормальный callback
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        text =(
+            f"❌ <b>Ошибка! Чтобы пользоваться ботом, подпишись на Telegram-Канал!</b>\n\n"
+            f"Будем всегда держать тебя в курсе! ;)"
+        )
+        return await send_new_message(update, text, reply_markup, photo_name=None)
+
+    return wrapper

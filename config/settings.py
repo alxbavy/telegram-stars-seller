@@ -30,13 +30,11 @@ env = environ.Env(
     USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
     CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
+    SUPPORT_URL=(str, 'https://google.com/'),
+    FEEDBACK_URL=(str, 'https://google.com/')
 )
 
-
 environ.Env.read_env(BASE_DIR / '.env')
-
-
-# Quick-start development settings - unsuitable for production
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
@@ -54,6 +52,11 @@ TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
 ADMIN_CHAT_ID = env('ADMIN_CHAT_ID', cast=int)
 ADMIN_BROADCAST_TOPIC_ID = env('ADMIN_BROADCAST_TOPIC_ID', cast=int)
 ADMIN_ORDERS_TOPIC_ID = env('ADMIN_ORDERS_TOPIC_ID', cast=int)
+CHANNEL_ID = env('CHANNEL_ID', cast=int)
+CHANNEL_LINK = env('CHANNEL_LINK')
+
+SUPPORT_URL = env('SUPPORT_URL')
+FEEDBACK_URL = env('FEEDBACK_URL')
 
 FRAGMENT_API_URL = env('FRAGMENT_API_URL')
 FRAGMENT_CURRENCY = env('FRAGMENT_CURRENCY')
@@ -74,7 +77,6 @@ django_stubs_ext.monkeypatch()
 
 
 # Logging
-
 
 LOGGING = {
     'version': 1,
@@ -171,7 +173,6 @@ DATABASES = {
 
 # Storages
 
-
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -218,3 +219,10 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'static'
+
+
+# URL, по которому медиафайлы будут доступны в браузере
+MEDIA_URL = '/media/'
+
+# Физический путь на сервере, куда Django будет сохранять файлы
+MEDIA_ROOT = BASE_DIR / 'data' / 'media'

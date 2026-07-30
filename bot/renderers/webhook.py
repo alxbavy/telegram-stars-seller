@@ -86,7 +86,7 @@ async def _get_message_parts_for_pending(msg_info: _MessageInfo) -> tuple[str, I
 async def _get_message_parts_for_processing_statuses(msg_info: _MessageInfo) -> tuple[str, InlineKeyboardMarkup, str]:
     text = (
         f"😊 <b>Заказ обрабатывается...</b>\n\n"
-        f"Пополняем — ⭐{msg_info.amount_stars}\n"
+        f"Пополняем — ⭐ {msg_info.amount_stars}\n"
         f"{f'Для кого 🎁 — {msg_info.target_username}\n' if msg_info.target_username != TARGET_SELF else ''}"
         f"🆔 ID заказа — <code>{msg_info.transaction_id}</code>\n\n"
         f"Обработка может занять до 15 минут. Если ничего не придёт, обратись в тех. поддержку"
@@ -101,7 +101,7 @@ async def _get_message_parts_for_in_doubt(msg_info: _MessageInfo) -> tuple[str, 
         f"🔍 <b>Проверь чат Telegram</b>\n\n"
         f"Бот отправил звёзды, но не смог проверить, дошли ли они. "
         f"Если в течение 5 минут ничего не придёт, обратись в тех. поддержку\n\n"
-        f"Пополняем — ⭐{msg_info.amount_stars}\n"
+        f"Пополняем — ⭐ {msg_info.amount_stars}\n"
         f"{f'Для кого 🎁 — {msg_info.target_username}\n' if msg_info.target_username != TARGET_SELF else ''}"
         f"🆔 ID заказа — <code>{msg_info.transaction_id}</code>"
     )

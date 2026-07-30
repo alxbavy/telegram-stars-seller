@@ -1,3 +1,5 @@
+from django.conf import settings
+
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.callbacks import create_callback, RepeatOrderCallback
@@ -10,7 +12,7 @@ async def _get_stars_sent_kb_list(telegram_id: int, with_feedback: bool = True) 
     )]]
 
     if with_feedback:
-        kb.append([InlineKeyboardButton("👛 Оставить отзыв", url="https://t.me/+MGPE9YDPigpkNDQy")])
+        kb.append([InlineKeyboardButton("👛 Оставить отзыв", url=settings.FEEDBACK_URL)])  # pyright: ignore[reportAny]
 
     return kb
 

@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator
 from telegram import CallbackQuery, Update
 from telegram.ext import ConversationHandler
 
-from general_utils import json_dumps, json_loads
+from general.utils import json_dumps, json_loads
 
 from bot.enums import MainMenuAction, BackDestination, RecipientMode, ProfileAction
 
@@ -184,17 +184,16 @@ async def parse_callback(
     if cb_key_dto is None:
         return None
 
-    dataclass_args: dict[str, object] = {}
+    callback_type = _INVERSE_REGISTRY[cb_key_dto.callback_domain]
 
     if cb_key_dto.action_id is not None:
         data = await (get_async_redis_client()).hget(build_user_key(telegram_id), cb_key_dto.key)
         if data is None:
             return RedisExpiredCallback(cb_key_dto)
-        dataclass_args = cast(dict[str, object], json_loads(data))
+        return json_loads(data, callback_type), cb_key_dto
 
-    callback_type = _INVERSE_REGISTRY[cb_key_dto.callback_domain]
     try:
-        return callback_type(**dataclass_args), cb_key_dto  # noqa
+        return callback_type(), cb_key_dto  # noqa
 
     except Exception as err:
         err_msg = "Произошла ошибка декодирования данных из Redis - скорее всего данные устарели"
@@ -309,9 +308,8 @@ class OrderConfirmedCallback(BaseCallback): pass
 class RepeatOrderCallback(BaseCallback): pass
 
 
-# TODO: referrals
 # @dataclass(frozen=True, slots=True)
-# class ReferralsPageCallback:
+# class ReferralsPageCallback:  # TODO: referrals
 #     page: int
 #
 #

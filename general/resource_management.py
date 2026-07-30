@@ -1,44 +1,7 @@
-import json
 import logging
-from decimal import Decimal
-from dataclasses import is_dataclass, asdict
-from typing import cast, override
-
+from typing import override
 
 logger = logging.getLogger(__name__)
-
-
-def cast_force[C](_: type[C], source: object, /) -> C:
-    return cast(C, source)  # noqa
-
-
-class DataclassEncoder(json.JSONEncoder):
-    @override
-    def default(self, o: object):
-        if is_dataclass(o) and not isinstance(o, type):
-            return asdict(o)  # noqa
-        if isinstance(o, Decimal):
-            return str(o)
-        return super().default(o)  # pyright: ignore[reportAny]
-
-
-def json_dumps(
-        obj: object,
-        *,
-        ensure_ascii: bool = False, indent: int | None = None,
-        skip_keys: bool = False,
-        sort_keys: bool = False
-) -> str:
-    return json.dumps(
-        obj, cls=DataclassEncoder,
-        ensure_ascii=ensure_ascii, indent=indent,
-        skipkeys=skip_keys,
-        sort_keys=sort_keys
-    )
-
-
-def json_loads(string: str | bytes | bytearray) -> object:
-    return cast(object, json.loads(string))
 
 
 class Where:

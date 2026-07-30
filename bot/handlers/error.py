@@ -11,10 +11,10 @@ from telegram import Update
 from telegram.error import NetworkError
 from telegram.ext import ContextTypes, InvalidCallbackData
 
-from bot.keyboards.support import build_support_kb
-from general_utils import json_dumps
+from general.utils import json_dumps
 
 from bot.keyboards.error import KeyboardMethodError
+from bot.keyboards.support import build_support_kb
 from bot.renderers.base import delete_message, send_new_message
 from bot.context import get_view_context
 

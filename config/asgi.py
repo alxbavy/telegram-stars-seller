@@ -51,7 +51,7 @@ async def application(scope: dict[str, object], receive: AsgiReceive, send: Asgi
             elif message['type'] == 'lifespan.shutdown':
                 logger.info("Server is stopping...")
 
-                from general_utils import Where, close_resources
+                from general.resource_management import close_resources, Where
                 await close_resources(Where("in Django"))
 
                 await send({'type': 'lifespan.shutdown.complete'})

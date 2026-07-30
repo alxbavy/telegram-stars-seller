@@ -30,5 +30,5 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def repeat_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Хендлер для кнопки 'Сделать ещё заказ!' (Use Case 10)"""
     clear_context(context)
-    _ = await show_choose_quantity(update, context)
+    _ = await show_choose_quantity(update, context, is_send_new_message=True)
     return BotConversationState.CHOOSE_QUANTITY

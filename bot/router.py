@@ -37,7 +37,8 @@ async def _bot_is_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]:
     return ConversationHandler(
         entry_points=[
-            CommandHandler("start", start_handler)
+            CommandHandler("start", start_handler),
+            CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback.pattern),
         ],
         states={
             BotConversationState.MAIN_MENU: [
@@ -76,7 +77,9 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
             BotConversationState.ORDER_CONFIRMATION: [
                 CallbackQueryHandler(handle_order_confirmed, pattern=OrderConfirmedCallback.pattern)
             ],
-            BotConversationState.ORDER_CONFIRMED: [],  # В этом состоянии есть только переход по URL
+            BotConversationState.ORDER_CONFIRMED: [
+                CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback.pattern)
+            ],
             ConversationHandler.WAITING: [  # Временное состояние для асинхронной работы, вход и выход из него контролировать не надо
                 MessageHandler(filters.TEXT, _bot_is_busy),
                 CallbackQueryHandler(_bot_is_busy)
@@ -85,7 +88,6 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
         fallbacks=[
             CommandHandler("start", start_handler),
             CallbackQueryHandler(handle_back_button, pattern=BackCallback.pattern),
-            CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback.pattern)
         ],
         name="main_conversation",
         block=False,

@@ -63,7 +63,8 @@ async def update_existing_message(
         update_or_msg: Update | Message,
         text: str,
         reply_markup: InlineKeyboardMarkup | None,
-        photo_name: str | None
+        photo_name: str | None,
+        answer_query: bool = True
 ) -> Message | None:
     """
     Возвращает либо изменённое сообщение, либо `None` в случае неудачи.
@@ -72,8 +73,13 @@ async def update_existing_message(
     с `callback_query` равным `None`.
     """
 
-    if isinstance(update_or_msg, Update) and update_or_msg.callback_query is None:
-        return None
+    if isinstance(update_or_msg, Update):
+        cb_query = update_or_msg.callback_query
+        if cb_query is None:
+            return None
+
+        if answer_query:
+            _ = await cb_query.answer()
 
     parse_mode = ParseMode.HTML
     try:
@@ -118,9 +124,15 @@ async def send_new_message(
         update: Update,
         text: str,
         reply_markup: InlineKeyboardMarkup | None,
-        photo_name: str | None
+        photo_name: str | None,
+        answer_query:  bool = True
 ) -> Message:
     kwargs: _MessageActionKwargs = {"reply_markup": reply_markup, "parse_mode": ParseMode.HTML}
+
+    if answer_query:
+        cb_query = update.callback_query
+        if cb_query is not None:
+            _ = await cb_query.answer()
 
     if photo_name:
         with create_media_source(photo_name) as media_source:
@@ -141,14 +153,13 @@ async def render_screen(
     """
 
     if update.callback_query is not None:
-        _ = await update.callback_query.answer()
         msg = await update_existing_message(update, text, reply_markup, photo_name)
         if isinstance(msg, Message):
             return msg
 
     _ = await delete_message(update.effective_message)
 
-    return await send_new_message(update, text, reply_markup, photo_name)
+    return await send_new_message(update, text, reply_markup, photo_name, answer_query=False)
 
 
 @retry(**_retry_config)

@@ -1,7 +1,9 @@
 from decimal import Decimal
 from uuid import UUID
+from typing import overload
 
 from telegram import Update, Message
+from telegram.ext import ContextTypes
 
 from bot.keyboards.main import build_back_to_main_menu_kb
 from bot.keyboards.order import (
@@ -23,13 +25,24 @@ from bot.enums import BackDestination
 from core.models import TARGET_SELF, PromoCode
 
 
+@overload
+async def show_choose_quantity(  # noqa  # pyright: ignore[reportInconsistentOverload]
+        update: Update, context: ContextTypes.DEFAULT_TYPE,
+        is_send_new_message: bool = False
+) -> Message: ...
+
 @autosave_active_conversation
-async def show_choose_quantity(update: Update) -> Message:
+async def show_choose_quantity(update: Update, is_send_new_message: bool = False) -> Message:
     text = (
         "🧠 <b>Сколько покупаем звёзд?</b>\n\nПоказываем самые популярные варианты.\n"
         "Можно ввести своё количество ;)"
     )
-    return await render_screen(
+    if not is_send_new_message:
+        send_method = render_screen
+    else:
+        send_method = send_new_message
+
+    return await send_method(
         update, text,
         reply_markup=await build_quantity_kb(update.effective_user.id),
         photo_name="choose_quantity.jpg"

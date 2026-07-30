@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import TypedDict, Unpack, final, override, TYPE_CHECKING
 
 from django.db import models
+from django.utils.timezone import localtime
 from solo.models import SingletonModel
 
 from core.domain.enums import TransactionStatus, TransactionType
@@ -228,7 +229,7 @@ class FragmentTransaction(models.Model):
     @final
     class Meta:
         verbose_name = "Транзакция Fragment"
-        verbose_name = "Транзакции Fragment"
+        verbose_name_plural = "Транзакции Fragment"
 
 
 @final
@@ -312,6 +313,69 @@ class FragmentAPI(SingletonModel):
     class Meta:  # pyright: ignore[reportIncompatibleVariableOverride]
         verbose_name = "Токен для FragmentAPI"
 
+
+@final
+class Broadcast(models.Model):
+    if TYPE_CHECKING:
+        pk: int | None
+        id: int  # pyright: ignore[reportUninitializedInstanceVariable]
+
+    name = models.CharField(blank=True, max_length=50, verbose_name="Название рассылки", help_text="Необязательно к заполнению")
+    text = models.TextField(verbose_name="Текст сообщения", help_text="Для форматирования используется разметка HTML")
+    media = models.FileField(upload_to="broadcasts/", blank=True, null=True, verbose_name="Медиа (Фото/Видео)")
+
+    # Храним в виде JSON: [["Кнопка 1", "Кнопка 2"], ["Кнопка 3"]]
+    button_texts: models.JSONField[list[list[str]] | None] = models.JSONField(blank=True, null=True, verbose_name="Тексты кнопок (JSON)", help_text='Формат (текст обязательно в двойных кавычках): null или список со списками названий, например, [["Строка1Столбец1", "Строка1Столбец2"], ["Строка2Столбец1"]]')
+    button_urls: models.JSONField[list[list[str]] | None] = models.JSONField(blank=True, null=True, verbose_name="URL кнопок (JSON)", help_text='Формат такой же, как у текста кнопок (ссылки тоже должны быть в двойных кавычках)')
+
+    telegram_file_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="File ID в Telegram")
+    preview_sent = models.BooleanField(default=False, verbose_name="Предпросмотр отправлен", help_text="Для массовой рассылки обязательно сначала отослать предпросмотр для кэширования файла")
+
+    is_sent = models.BooleanField(default=False, verbose_name="Рассылка завершена")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    @final
+    class Meta:
+        verbose_name = "Рассылка"
+        verbose_name_plural = "Рассылки"
+
+    @override
+    def __str__(self) -> str:
+        if self.name:
+            return self.name
+        return f"Рассылка от {localtime(self.created_at).strftime('%d.%m.%Y %H:%M')}"
+
+    def _check_update_fields(self, kwargs: SaveKwargs) -> None:
+        """Модифицирует `update_fields` в исходном `kwargs` при необходимости."""
+
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "media" in update_fields:
+            self.preview_sent = False
+            self.telegram_file_id = None
+
+            if update_fields is not None:
+                fields_set = set(update_fields)
+                fields_set.update(["preview_sent", "telegram_file_id"])
+                kwargs["update_fields"] = list(fields_set)
+
+    @override
+    def save(self, **kwargs: Unpack[SaveKwargs]):  # noqa  # pyright: ignore[reportIncompatibleMethodOverride]
+        if self.pk:
+            orig = Broadcast.objects.get(pk=self.pk)
+            if orig.media != self.media:
+                self._check_update_fields(kwargs)
+
+        super().save(**kwargs)
+
+    @override
+    async def asave(self, **kwargs: Unpack[SaveKwargs]):  # noqa  # pyright: ignore[reportIncompatibleMethodOverride]
+        if self.pk:
+            orig = await Broadcast.objects.aget(pk=self.pk)
+            if orig.media != self.media:
+                self._check_update_fields(kwargs)
+
+        await super().asave(**kwargs)
 
 
 # TODO: можно сделать таблицу для file_id изображений сообщений, чтобы оптимизировать трафик (разобраться вместе с Gemini)

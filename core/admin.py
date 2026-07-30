@@ -5,19 +5,20 @@ from collections.abc import Mapping
 
 from django import forms
 from django.conf import settings
-from django.contrib import admin
-from django.http import HttpRequest
+from django.contrib import admin, messages
+from django.http import HttpRequest, HttpResponseRedirect
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 
 from solo.admin import SingletonModelAdmin
 
+from core.forms import BroadcastForm
 from core.models import (
     FragmentTransaction, PaymentAPI, PromoCode, TelegramUser, Transaction, TransactionMetadata,
     PaymentMethod, GlobalSettings, FragmentAPI,
-    MonthlyProfit
+    MonthlyProfit, Broadcast
 )
-
+from core.services.redis_service import publish_broadcast_task
 
 
 class TransactionMetadataMixin:
@@ -300,3 +301,46 @@ class MonthlyProfitAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingType
 class FragmentAPIAdmin(SingletonModelAdmin):
     list_display = ("token", "updated_at")
     readonly_fields = ("updated_at", )
+
+
+@final
+@admin.register(Broadcast)
+class BroadcastAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
+    form = BroadcastForm
+    change_form_template = "admin/broadcast_change_form.html"
+    readonly_fields = ("telegram_file_id", "preview_sent", "is_sent", "created_at")
+
+    @override
+    def response_change(self, request: HttpRequest, obj: Broadcast | None):
+        if "_send_preview" in request.POST:
+            publish_broadcast_task("preview", obj.id)
+            messages.info(request, "Предпросмотр отправляется... Обновите страницу через пару секунд.")
+            return HttpResponseRedirect(request.path)
+
+        if "_send_broadcast" in request.POST:
+            if not obj.preview_sent:
+                err_msg = (
+                    "Ошибка: Сначала необходимо отправить предпросмотр! "
+                    "(Если вы изменили медиа, предпросмотр нужно отправить заново)."
+                )
+                messages.error(request, err_msg)
+                return HttpResponseRedirect(request.path)
+
+            if obj.media and not obj.telegram_file_id:
+                err_msg = (
+                    "Ошибка: Медиафайл прикреплен, но file_id не получен. "
+                    "Отправьте предпросмотр еще раз, чтобы Telegram загрузил файл."
+                )
+                messages.error(request, err_msg)
+                return HttpResponseRedirect(request.path)
+
+            publish_broadcast_task("broadcast", obj.id)
+
+            if obj.is_sent:
+                messages.error(request, "ПОВТОРНАЯ массовая рассылка запущена в фоновом режиме.")
+            else:
+                messages.success(request, "Массовая рассылка запущена в фоновом режиме.")
+
+            return HttpResponseRedirect(request.path)
+
+        return super().response_change(request, obj)  # pyright: ignore[reportUnknownMemberType]

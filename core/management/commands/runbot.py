@@ -5,6 +5,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor
 # from pathlib import Path
 from typing import final, override
+from collections.abc import Awaitable
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -24,7 +25,7 @@ from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 from bot.utils.type_aliases import DefaultApplication
 
-from core.services.redis_service import close_async_redis_client
+from core.services.redis_service import close_async_redis_client, listen_redis_for_broadcasts
 from core.ioc import close_container
 
 
@@ -61,8 +62,20 @@ class Command(BaseCommand):
         loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
         self.stdout.write("Бот: ThreadPoolExecutor расширен до 50 потоков.")
 
-    async def post_stop(self, _: DefaultApplication) -> None:
+        self.stdout.write("Бот: создаём прослушиватель публикаций Redis для рассылок...")
+        application.bot_data["stop_redis"] = False
+        application.bot_data["broadcast_listener"] = asyncio.create_task(listen_redis_for_broadcasts(application))
+        self.stdout.write("Бот: прослушиватель публикаций Redis для рассылок создан!")
+
+    async def post_stop(self, application: DefaultApplication) -> None:
         self.stdout.write("Bot is stopping...")
+
+        self.stdout.write("Бот: останавливаем прослушиватель публикаций Redis для рассылок...")
+        application.bot_data["stop_redis"] = True
+        task = application.bot_data.get("broadcast_listener", None)
+        if task is not None and isinstance(task, Awaitable):
+            await task
+        self.stdout.write("Бот: прослушиватель публикаций Redis для рассылок остановлен!")
 
         self.stdout.write("Closing DI container in bot...")
         try:

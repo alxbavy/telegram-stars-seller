@@ -1,0 +1,37 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+    {{ block.super }}
+
+    {% if original.pk %}
+    <div class="submit-row">
+        <input type="submit" value="Отправить предпросмотр" name="_send_preview" class="default"
+               style="
+               background-color: #417690;
+               float: left;
+               margin-left: 10px;
+               "
+        >
+
+        {% if original.is_sent %}
+            <input type="submit" value="Отправить рассылку ПОВТОРНО" name="_send_broadcast" class="default"
+                   style="
+                   background-color: #ba2121;
+                   float: left;
+                   margin-left: 10px;
+                   "
+                   onclick="return confirm('Внимание! Эта рассылка УЖЕ БЫЛА отправлена ранее.\n\nВы уверены, что хотите отправить её ПОВТОРНО всем пользователям?');"
+            >
+        {% else %}
+            <input type="submit" value="Начать рассылку всем" name="_send_broadcast" class="default"
+                   style="
+                   background-color: #ba2121;
+                   float: left;
+                   margin-left: 10px;
+                   "
+                   onclick="return confirm('Вы уверены, что хотите запустить рассылку ВСЕМ пользователям? Это действие нельзя отменить.');"
+            >
+        {% endif %}
+    </div>
+    {% endif %}
+{% endblock %}

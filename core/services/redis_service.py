@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import random
 import logging
 from uuid import UUID
-from typing import Protocol, cast
+from dataclasses import dataclass
+from typing import Protocol, TypedDict, cast
 from collections.abc import Sequence
 
 from django.conf import settings
@@ -14,6 +16,11 @@ from redis.asyncio import Redis as async_Redis, from_url as async_from_url  # no
 from redis.asyncio.lock import Lock as async_Lock  # noqa
 
 from celery import Task
+
+from general.utils import json_dumps, json_loads
+
+from bot.notifications.broadcast import process_preview, process_broadcast
+from bot.utils.type_aliases import DefaultApplication
 
 
 logger = logging.getLogger(__name__)
@@ -190,6 +197,68 @@ def sync_get_lock_or_retry[**P, R](
         raise celery_task.retry(countdown=base_delay + jitter, max_retries=None)
 
     return lock
+
+
+BOT_BROADCAST_CHANNEL = "bot_broadcast_channel"
+
+
+@dataclass(frozen=True, slots=True)
+class BroadcastPublishDTO:
+    action: str
+    broadcast_id: int
+
+
+class PubSubMessage(TypedDict):
+    type: str
+    pattern: str | None
+    channel: str
+    data: str | int
+
+
+def publish_broadcast_task(action: str, broadcast_id: int) -> None:
+    broadcast_publish = BroadcastPublishDTO(action, broadcast_id)
+    payload = json_dumps(broadcast_publish)
+    _ = redis_client.publish(BOT_BROADCAST_CHANNEL, payload)  # pyright: ignore[reportUnknownMemberType]
+
+
+async def listen_redis_for_broadcasts(app: DefaultApplication) -> None:
+    """Слушает Pub/Sub канал Redis и запускает рассылки внутри цикла бота."""
+
+    while not app.running:
+        if app.bot_data.get("stop_redis", False):
+            logger.warning("Бот: был запрос на остановку прослушивания рассылок и не дождался старта бота!")
+            return
+
+        await asyncio.sleep(0.1)
+
+    async_redis_client = get_async_redis_client()
+    pubsub = async_redis_client.pubsub()  # pyright: ignore[reportUnknownMemberType]
+
+    await pubsub.subscribe(BOT_BROADCAST_CHANNEL)
+    logger.info(f"Начато прослушивание канала {BOT_BROADCAST_CHANNEL}")
+
+    try:
+        while not app.bot_data.get("stop_redis", False):
+            message = cast(
+                PubSubMessage | None, await pubsub.get_message(ignore_subscribe_messages=True, timeout=3.0)
+            )
+
+            if message is not None and message["type"] == "message":
+                msg_data = cast(str, message["data"])  # noqa
+                data = json_loads(msg_data, BroadcastPublishDTO)
+
+                action = data.action
+                if action == "preview":
+                    _ = app.create_task(process_preview(app.bot, data.broadcast_id))
+                elif action == "broadcast":
+                    _ = app.create_task(process_broadcast(app.bot, data.broadcast_id))
+
+    except Exception as exc:
+        logger.exception(f"Возникло исключение во время прослушивания канала {BOT_BROADCAST_CHANNEL}: {exc}")
+
+    finally:
+        await pubsub.close()
+        logger.info(f"Бот: прослушивание Redis по каналу {BOT_BROADCAST_CHANNEL} остановлено!")
 
 
 class DecodingRedisDataError(Exception):

@@ -28,8 +28,3 @@ async def send_empty_username_alert(update: Update) -> Message:
         f"⚙️ Настройки -> 👤 Мой аккаунт -> @ Имя пользователя (не путать с Имя)"
     )
     return await send_new_message(update, text, reply_markup=None, photo_name=None)
-
-
-# TODO: сделать проверку подписки на канал на каждом шаге (либо почти на каждом - продумать)
-# TODO: добавить уведомления о новых заказах в админскую группу
-# TODO: добавить конструктор рассылок в админскую группу

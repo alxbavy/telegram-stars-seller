@@ -14,9 +14,10 @@ from telegram.error import BadRequest, RetryAfter
 
 from django.conf import settings
 
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
+from tenacity import retry
 
-from core.domain.tenacity_utils import sleep_for_retry_after
+from core.domain.tenacity_utils import TelegramRetryConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class _MessageEditTextKwargs(TypedDict):
     parse_mode: ParseMode
 
 
+_retry_config = TelegramRetryConfig().asdict
+
+
 @contextmanager
 def create_media_source(photo_name: str) -> Generator[BufferedReader | str]:
     image_path = cast(Path, settings.BASE_DIR / "images" / photo_name)
@@ -54,13 +58,7 @@ def create_media_source(photo_name: str) -> Generator[BufferedReader | str]:
             media_source.close()
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential_jitter(initial=1.0, max=4.0, jitter=1.0),
-    retry=retry_if_exception_type((NetworkError, RetryAfter)),
-    before_sleep=sleep_for_retry_after,
-    reraise=True
-)
+@retry(**_retry_config)
 async def update_existing_message(
         update_or_msg: Update | Message,
         text: str,
@@ -115,13 +113,7 @@ async def update_existing_message(
         raise exc
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential_jitter(initial=1.0, max=4.0, jitter=1.0),
-    retry=retry_if_exception_type((NetworkError, RetryAfter)),
-    before_sleep=sleep_for_retry_after,
-    reraise=True
-)
+@retry(**_retry_config)
 async def send_new_message(
         update: Update,
         text: str,
@@ -159,13 +151,7 @@ async def render_screen(
     return await send_new_message(update, text, reply_markup, photo_name)
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential_jitter(initial=1.0, max=4.0, jitter=1.0),
-    retry=retry_if_exception_type((NetworkError, RetryAfter)),
-    before_sleep=sleep_for_retry_after,
-    reraise=True
-)
+@retry(**_retry_config)
 async def delete_message(msg: Message | None) -> bool:
     if msg is None:
         return True

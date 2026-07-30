@@ -1,6 +1,6 @@
 import json
 from decimal import Decimal
-from typing import final, override
+from typing import final, override, cast
 from collections.abc import Mapping
 
 from django import forms
@@ -24,40 +24,40 @@ class TransactionMetadataMixin:
     """Миксин для названий полей из связанной модели метаданных транзакции."""
     def transaction_type(self, obj: Transaction) -> str:
         try:
-            return obj.metadata_info.get_type_display()
+            return obj.metadata_info.get_type_display()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAttributeAccessIssue]
         except TransactionMetadata.DoesNotExist:
             return "—"
-    transaction_type.short_description = "Тип"
-    transaction_type.admin_order_field = "metadata_info__type"
+    transaction_type.short_description = "Тип"  # pyright: ignore[reportFunctionMemberAccess]
+    transaction_type.admin_order_field = "metadata_info__type"  # pyright: ignore[reportFunctionMemberAccess]
 
     def promo_id(self, obj: Transaction) -> int | None | str:
         try:
             return obj.metadata_info.promo_id
         except TransactionMetadata.DoesNotExist:
             return "—"
-    promo_id.short_description = "ID промо"
-    promo_id.admin_order_field = "metadata_info__promo_id"
+    promo_id.short_description = "ID промо"  # pyright: ignore[reportFunctionMemberAccess]
+    promo_id.admin_order_field = "metadata_info__promo_id"  # pyright: ignore[reportFunctionMemberAccess]
 
     def promo_name(self, obj: Transaction) -> str:
         try:
             return obj.metadata_info.promo_name
         except TransactionMetadata.DoesNotExist:
             return "—"
-    promo_name.short_description = "Имя промо"
-    promo_name.admin_order_field = "metadata_info__promo_name"
+    promo_name.short_description = "Имя промо"  # pyright: ignore[reportFunctionMemberAccess]
+    promo_name.admin_order_field = "metadata_info__promo_name"  # pyright: ignore[reportFunctionMemberAccess]
 
     def promo_discount(self, obj: Transaction) -> Decimal | None | str:
         try:
             return obj.metadata_info.promo_discount
         except TransactionMetadata.DoesNotExist:
             return "—"
-    promo_discount.short_description = "Скидка% промо"
-    promo_discount.admin_order_field = "metadata_info__promo_discount"
+    promo_discount.short_description = "Скидка% промо"  # pyright: ignore[reportFunctionMemberAccess]
+    promo_discount.admin_order_field = "metadata_info__promo_discount"  # pyright: ignore[reportFunctionMemberAccess]
 
 
 
 @final
-class TransactionInline(admin.TabularInline, TransactionMetadataMixin):
+class TransactionInline(admin.TabularInline, TransactionMetadataMixin):  # pyright: ignore[reportMissingTypeArgument]
     """Инлайн для отображения транзакций в карточке пользователя"""
     model: type[Transaction] = Transaction
     readonly_fields = (
@@ -76,7 +76,7 @@ class TransactionInline(admin.TabularInline, TransactionMetadataMixin):
 
 
 @final
-class TelegramUserInline(admin.TabularInline):
+class TelegramUserInline(admin.TabularInline):  # pyright: ignore[reportMissingTypeArgument]
     model: type[TelegramUser] = TelegramUser
     readonly_fields = ("username", "telegram_id", "promo_since", "created_at", "updated_at")
     show_change_link = True
@@ -91,7 +91,7 @@ class TelegramUserInline(admin.TabularInline):
 
 @final
 @admin.register(PromoCode)
-class PromoCodeAdmin(admin.ModelAdmin):
+class PromoCodeAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     list_display = (
         "name", "discount", "usage_global", "usage_account", "is_active", "created_at", "updated_at"
     )
@@ -107,7 +107,7 @@ class PromoCodeAdmin(admin.ModelAdmin):
 
 @final
 @admin.register(TelegramUser)
-class TelegramUserAdmin(admin.ModelAdmin):
+class TelegramUserAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     list_display = (
         "username", "telegram_id", "active_promo", "promo_since", "created_at", "updated_at"
     )
@@ -118,7 +118,7 @@ class TelegramUserAdmin(admin.ModelAdmin):
         ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
         ("promo_since", admin.DateFieldListFilter)
     )
-    if settings.DEBUG:
+    if settings.DEBUG:  # pyright: ignore[reportAny]
         readonly_fields = ("promo_since", "created_at", "updated_at")
     else:
         readonly_fields = (
@@ -132,14 +132,15 @@ class PrettyJSONWidget(forms.Textarea):
     def format_value(self, value: str | Mapping[str, object]):
         try:
             if isinstance(value, str):
-                value = json.loads(value)
+                value = cast(dict[str, object], json.loads(value))
             return json.dumps(value, indent=4, ensure_ascii=False)
+
         except (ValueError, TypeError):
             return super().format_value(value)
 
 
 @final
-class TransactionMetadataInline(admin.StackedInline):
+class TransactionMetadataInline(admin.StackedInline):  # pyright: ignore[reportMissingTypeArgument]
     model: type[TransactionMetadata] = TransactionMetadata
     can_delete = False
     formfield_overrides = {
@@ -154,7 +155,7 @@ class TransactionMetadataInline(admin.StackedInline):
 
 @final
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin, TransactionMetadataMixin):
+class TransactionAdmin(admin.ModelAdmin, TransactionMetadataMixin):  # pyright: ignore[reportMissingTypeArgument]
     list_display = (
         "id", "telegram_user", "amount_stars", "amount_fiat", "target_username", "status", "transaction_type",
         "promo_name", "promo_discount", "promo_id",
@@ -174,15 +175,15 @@ class TransactionAdmin(admin.ModelAdmin, TransactionMetadataMixin):
     inlines = [TransactionMetadataInline]
 
     @override
-    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
+    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):  # pyright: ignore[reportUnknownParameterType]
         if obj:
-            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))
+            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportUnknownArgumentType]
 
-        return tuple(self.readonly_fields)
+        return tuple(self.readonly_fields)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportUnknownArgumentType]
 
 
 @final
-class PaymentMethodInline(admin.TabularInline):
+class PaymentMethodInline(admin.TabularInline):  # pyright: ignore[reportMissingTypeArgument]
     model: type[PaymentMethod] = PaymentMethod
     fields = ("name", "commission_percent", "external_id", "is_active")
     extra = 0
@@ -190,14 +191,14 @@ class PaymentMethodInline(admin.TabularInline):
 
 @final
 @admin.register(PaymentAPI)
-class PaymentAPIAdmin(admin.ModelAdmin):
+class PaymentAPIAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     inlines = [PaymentMethodInline]
     list_display = ("name", )
 
 
 @final
 @admin.register(FragmentTransaction)
-class FragmentTransactionAdmin(admin.ModelAdmin):
+class FragmentTransactionAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     list_display = (
         "fragment_id", "id_from_payment_api", "status", "created_at", "updated_at"
     )
@@ -211,11 +212,11 @@ class FragmentTransactionAdmin(admin.ModelAdmin):
     readonly_fields_when_created = ("fragment_id", "id_from_payment_api")
 
     @override
-    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):
+    def get_readonly_fields(self, request: HttpRequest, obj: Transaction | None = None):  # pyright: ignore[reportUnknownParameterType]
         if obj:
-            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))
+            return tuple(list(self.readonly_fields_when_created) + list(self.readonly_fields))  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType, reportUnknownMemberType]
 
-        return tuple(self.readonly_fields)
+        return tuple(self.readonly_fields)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportUnknownArgumentType]
 
 
 @final
@@ -257,7 +258,7 @@ class GlobalSettingsAdmin(SingletonModelAdmin):
 
 @final
 @admin.register(MonthlyProfit)
-class MonthlyProfitAdmin(admin.ModelAdmin):
+class MonthlyProfitAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     # Кастомный шаблон
     change_list_template = "admin/monthly_profit_report.html"
 
@@ -280,8 +281,8 @@ class MonthlyProfitAdmin(admin.ModelAdmin):
 
         extra_context = extra_context or {}
         extra_context["title"] = "Отчет по прибыли по месяцам"
-        extra_context["monthly_stats"] = monthly_stats
-        extra_context["total_all_time"] = total_all_time
+        extra_context["monthly_stats"] = monthly_stats  # noqa  # pyright: ignore[reportArgumentType]
+        extra_context["total_all_time"] = total_all_time  # pyright: ignore[reportArgumentType]
 
         return super().changelist_view(request, extra_context=extra_context)
 

@@ -1,6 +1,8 @@
 from collections.abc import Iterable
 from decimal import Decimal
-from typing import TypedDict, Unpack, override, TYPE_CHECKING
+from uuid import UUID
+from datetime import datetime
+from typing import TypedDict, Unpack, final, override, TYPE_CHECKING
 
 from django.db import models
 from solo.models import SingletonModel
@@ -19,11 +21,11 @@ class SaveKwargs(TypedDict, total=False):
     update_fields: Iterable[str] | None
 
 
+@final
 class PromoCode(models.Model):
-    objects = models.Manager()
     if TYPE_CHECKING:
-        telegram_users: models.manager.RelatedManager["TelegramUser"]
-        id: int
+        telegram_users: models.manager.RelatedManager["TelegramUser"]  # pyright: ignore[reportUninitializedInstanceVariable]
+        id: int  # pyright: ignore[reportUninitializedInstanceVariable]
 
     name = models.CharField(max_length=50, verbose_name="Промокод", help_text="Только название; регистр учитывается")
     discount = models.DecimalField(
@@ -43,15 +45,16 @@ class PromoCode(models.Model):
     def __str__(self):
         return f"{self.name} {self.discount}%"
 
+    @final
     class Meta:
         verbose_name = "Промокод"
         verbose_name_plural = "Промокоды"
 
 
+@final
 class TelegramUser(models.Model):
-    objects = models.Manager()
     if TYPE_CHECKING:
-        transactions: models.manager.RelatedManager["Transaction"]
+        transactions: models.manager.RelatedManager["Transaction"]  # pyright: ignore[reportUninitializedInstanceVariable]
 
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, blank=True, verbose_name="Username")
@@ -67,12 +70,12 @@ class TelegramUser(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @override
-    def save(self, **kwargs: Unpack[SaveKwargs]):
+    def save(self, **kwargs: Unpack[SaveKwargs]):  # noqa  # pyright: ignore[reportIncompatibleMethodOverride]
         self.username = self.username.lstrip("@")
         super().save(**kwargs)
 
     @override
-    async def asave(self, **kwargs: Unpack[SaveKwargs]):
+    async def asave(self, **kwargs: Unpack[SaveKwargs]):  # noqa  # pyright: ignore[reportIncompatibleMethodOverride]
         self.username = self.username.lstrip("@")
         await super().asave(**kwargs)
 
@@ -80,46 +83,46 @@ class TelegramUser(models.Model):
     def __str__(self):
         return f"{self.username or self.telegram_id}"
 
+    @final
     class Meta:
         verbose_name = "Пользователь бота"
         verbose_name_plural = "Пользователи бота"
 
 
 class Transaction(models.Model):
-    objects = models.Manager()
     if TYPE_CHECKING:
-        metadata_info: "TransactionMetadata"
-        metadata_info_id: int
+        metadata_info: "TransactionMetadata"  # pyright: ignore[reportUninitializedInstanceVariable]
+        metadata_info_id: int  # pyright: ignore[reportUninitializedInstanceVariable]
 
-    id = models.UUIDField(primary_key=True, verbose_name="ID платежа", help_text="Это ID из внешнего API")
-    telegram_user = models.ForeignKey(
+    id: models.UUIDField[UUID] = models.UUIDField(primary_key=True, verbose_name="ID платежа", help_text="Это ID из внешнего API")
+    telegram_user: models.ForeignKey[TelegramUser] = models.ForeignKey(
         TelegramUser,
         on_delete=models.CASCADE,
         related_name="transactions",
         verbose_name="Покупатель"
     )
-    amount_fiat = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Со скидкой (если есть)")
-    amount_stars = models.IntegerField(verbose_name="Звёзды")
-    target_username = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
-    status = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
-    message_id = models.IntegerField(default=-1, blank=True, verbose_name="ID сообщения заказа", help_text="Нужно для вебхука")
-    pay_url = models.CharField(max_length=255, default="dummy.pay.link", verbose_name="URL оплаты", help_text="Приходит из платёжной системы")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
-    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="Истекает")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
+    amount_fiat: models.DecimalField[Decimal] = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма", help_text="Со скидкой (если есть)")
+    amount_stars: models.IntegerField[int] = models.IntegerField(verbose_name="Звёзды")
+    target_username: models.CharField[str] = models.CharField(max_length=255, blank=True, default=TARGET_SELF, verbose_name="Кому")
+    status: models.CharField[str] = models.CharField(max_length=20, choices=TransactionStatus.to_choices(), default=TransactionStatus.PENDING, verbose_name="Статус")
+    message_id: models.IntegerField[int] = models.IntegerField(default=-1, blank=True, verbose_name="ID сообщения заказа", help_text="Нужно для вебхука")
+    pay_url: models.CharField[str] = models.CharField(max_length=255, default="dummy.pay.link", verbose_name="URL оплаты", help_text="Приходит из платёжной системы")
+    created_at: models.DateTimeField[datetime] = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    expires_at: models.DateTimeField[datetime | None] = models.DateTimeField(null=True, blank=True, verbose_name="Истекает")
+    updated_at: models.DateTimeField[datetime] = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @override
     def __str__(self):
         return f"Транзакция #{self.id} ({self.telegram_user})"
 
+    @final
     class Meta:
         verbose_name = "Транзакция"
         verbose_name_plural = "Транзакции"
 
 
+@final
 class TransactionMetadata(models.Model):
-    objects = models.Manager()
-
     transaction = models.OneToOneField(
         Transaction,
         on_delete=models.CASCADE,
@@ -137,28 +140,30 @@ class TransactionMetadata(models.Model):
         verbose_name="Скидка промокода %",
         help_text="Указывается в %, например, 5.00 (не 0.05)"
     )
-    payload: dict[str, object] = models.JSONField(default=dict, blank=True, verbose_name="Доп. данные (JSON)")
+    payload: models.JSONField[dict[str, object]] = models.JSONField(default=dict, blank=True, verbose_name="Доп. данные (JSON)")
 
     @override
     def __str__(self):
         return f"Метаданные для {self.transaction}"
 
+    @final
     class Meta:
         verbose_name = "Метаданные транзакции"
         verbose_name_plural = "Метаданные транзакций"
 
 
 class MonthlyProfit(Transaction):
-    class Meta:
+    @final
+    class Meta:  # pyright: ignore[reportIncompatibleVariableOverride]
         proxy = True
         verbose_name = "Прибыль по месяцам"
         verbose_name_plural = "Прибыль по месяцам"
 
 
+@final
 class PaymentAPI(models.Model):
-    objects = models.Manager()
     if TYPE_CHECKING:
-        methods: models.manager.RelatedManager["PaymentMethod"]
+        methods: models.manager.RelatedManager["PaymentMethod"]  # pyright: ignore[reportUninitializedInstanceVariable]
 
     name = models.CharField(primary_key=True, max_length=50, verbose_name="Название API платёжных систем")
 
@@ -166,14 +171,14 @@ class PaymentAPI(models.Model):
     def __str__(self):
         return self.name
 
+    @final
     class Meta:
         verbose_name = "API платёжных систем"
         verbose_name_plural = "API платёжных систем"
 
 
+@final
 class PaymentMethod(models.Model):
-    objects = models.Manager()
-
     api = models.ForeignKey(
         PaymentAPI,
         on_delete=models.CASCADE,
@@ -195,6 +200,7 @@ class PaymentMethod(models.Model):
     def __str__(self):
         return f"{self.api.name} - {self.name} ({self.commission_percent}%)"
 
+    @final
     class Meta:
         verbose_name = "Метод оплаты"
         verbose_name_plural = "Методы оплаты"
@@ -206,13 +212,12 @@ class PaymentMethod(models.Model):
             )
         ]
 
-
+@final
 class FragmentTransaction(models.Model):
-    objects = models.Manager()
-
     fragment_id = models.UUIDField(primary_key=True, verbose_name="ID Fragment")
     id_from_payment_api = models.UUIDField(verbose_name="ID из платёжного API")
     status = models.CharField(max_length=40, choices=FragmentStatus.to_choices(), default=FragmentStatus.CREATED, verbose_name="Статус FRAGMENT")
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
@@ -220,14 +225,14 @@ class FragmentTransaction(models.Model):
     def __str__(self):
         return f"Транзакция Fragment #{self.fragment_id} (платёжное ID {self.id_from_payment_api})"
 
+    @final
     class Meta:
         verbose_name = "Транзакция Fragment"
         verbose_name = "Транзакции Fragment"
 
 
+@final
 class GlobalSettings(SingletonModel):
-    objects = models.Manager()
-
     star_base_cost = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -252,19 +257,20 @@ class GlobalSettings(SingletonModel):
 
     @classmethod
     async def aget_solo(cls):
-        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        obj, _ = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
         return obj
 
+    @override
     def __str__(self):
         return "Глобальные настройки"
 
-    class Meta:
+    @final
+    class Meta:  # pyright: ignore[reportIncompatibleVariableOverride]
         verbose_name = "Глобальные настройки"
 
 
+@final
 class ExchangeRate(SingletonModel):
-    objects = models.Manager()
-
     usd_rate = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -275,34 +281,35 @@ class ExchangeRate(SingletonModel):
 
     @classmethod
     async def aget_solo(cls):
-        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        obj, _ = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
         return obj
 
     @override
     def __str__(self):
         return f"Курс доллара: {self.usd_rate}"
 
-    class Meta:
+    @final
+    class Meta:  # pyright: ignore[reportIncompatibleVariableOverride]
         verbose_name = "Курс валют"
 
 
+@final
 class FragmentAPI(SingletonModel):
-    objects = models.Manager()
-
     # У fragment-api есть комиссия при переводах 0.5%, в данный момент она не учитывается при расчёте цен
     token = models.TextField(blank=True, help_text="Можно получить в Dashboard на fragment-api.com/dashboard")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
     @classmethod
     async def aget_solo(cls):
-        obj, is_created = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
+        obj, _ = await cls.objects.aget_or_create(pk=cls.singleton_instance_id)
         return obj
 
     @override
     def __str__(self):
         return "Токен для FragmentAPI"
 
-    class Meta:
+    @final
+    class Meta:  # pyright: ignore[reportIncompatibleVariableOverride]
         verbose_name = "Токен для FragmentAPI"
 
 

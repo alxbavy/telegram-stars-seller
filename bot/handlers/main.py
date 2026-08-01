@@ -1,7 +1,7 @@
 from dishka import FromDishka
 
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 
 from bot.renderers.order import show_choose_quantity
 from bot.renderers.support import show_support_page
@@ -9,12 +9,13 @@ from bot.renderers.profile import show_profile_page
 from bot.renderers.info import show_info_page
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
+from bot.utils.channel_subscription import require_subscription
 from bot.utils.handlers_registry import build_async_handlers_register
 from bot.utils.type_aliases import UpdateWithContextHandler
 
-from bot.callbacks import MainMenuCallback, cast_callback
+from bot.callbacks import MainMenuCallback, manage_callback_data
 from bot.context import get_view_context
-from bot.enums import MainMenuAction
+from bot.enums import MainMenuAction, BackDestination
 from bot.states import BotConversationState
 
 from core.repositories.utils import db_action_with_tenacity
@@ -23,11 +24,12 @@ from core.services.user import UserService
 from core.ioc import inject
 
 
-main_menu_registry: dict[MainMenuAction, UpdateWithContextHandler[..., BotConversationState]] = {}
+main_menu_registry: dict[MainMenuAction, UpdateWithContextHandler[[], BotConversationState]] = {}
 register = build_async_handlers_register(main_menu_registry)
 
 
 @register(MainMenuAction.BUY)
+@require_subscription(BackDestination.MAIN_MENU)
 async def _handle_main_menu_action_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ = await show_choose_quantity(update, context)
     return BotConversationState.CHOOSE_QUANTITY
@@ -53,7 +55,7 @@ async def _handle_main_menu_action_profile(
         user_service: FromDishka[UserService]
 ):
     profile_data = await db_action_with_tenacity(
-        user_service.get_profile_data(update.effective_user.id)
+        user_service.get_profile_data, update.effective_user.id
     )
     ctx = get_view_context(context)
     ctx.profile_data = profile_data
@@ -69,6 +71,10 @@ async def _handle_main_menu_action_info(update: Update, context: ContextTypes.DE
 
 @ensure_use_active_conversation_with_callback
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cb_data = cast_callback(MainMenuCallback, update.callback_query.data)
-    handler = main_menu_registry[cb_data.action]
-    return await handler(update, context)
+    async with manage_callback_data(update, MainMenuCallback) as cb_data:
+        if isinstance(cb_data, int):
+            assert cb_data == ConversationHandler.END
+            return cb_data
+
+        handler = main_menu_registry[cb_data.action]
+        return await handler(update, context)

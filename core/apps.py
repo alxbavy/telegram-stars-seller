@@ -9,7 +9,6 @@ class CoreConfig(AppConfig):
     name = 'core'
 
 
-
 @final
 class SQLiteJsonNormalizer(Transform):
     lookup_name = "normalize"

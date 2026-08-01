@@ -11,6 +11,7 @@ from django.db import OperationalError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
 from core.domain.network_utils import get_timeout_error_or_none, RetriesEntity
+from core.domain.type_aliases import AsyncCallable
 
 
 logger = logging.getLogger(__name__)
@@ -146,28 +147,27 @@ async def safe_db_action_async_with_retries_celery[FR,**TP,TR](
     retry=retry_if_exception_type(DBErrorSafeToRetry),
     reraise=True
 )
-async def db_action_async_with_tenacity[R](coro: Awaitable[R]) -> R:
-    return await db_action_async(coro, return_exc=False)
+async def _db_action_with_tenacity_with_raise_exception[**P, R](
+        func: Callable[P,Awaitable[R]], *args: P.args, **kwargs: P.kwargs
+) -> R:
+    return await db_action_async(func(*args, **kwargs), return_exc=False)
 
 
-@overload
-async def db_action_with_tenacity[R](coro: Awaitable[R], suppress_exc: Literal[False] = False) -> R: ...
-
-
-@overload
-async def db_action_with_tenacity[R](coro: Awaitable[R], suppress_exc: Literal[True]) -> R | None: ...
-
-
-@overload
-async def db_action_with_tenacity[R](coro: Awaitable[R], suppress_exc: bool) -> R | None: ...
-
-
-async def db_action_with_tenacity[R](coro: Awaitable[R], suppress_exc: Literal[True, False] | bool = False) -> R | None:
+async def db_action_with_tenacity[**P,R](func: AsyncCallable[P,R], *args: P.args, **kwargs: P.kwargs) -> R:
     try:
-        return await db_action_async_with_tenacity(coro)
+        return await _db_action_with_tenacity_with_raise_exception(func, *args, **kwargs)
 
     except Exception as err:
         logger.exception(f"{err.__class__.__name__} - {str(err)}")
-        if suppress_exc:
-            return None
         raise err
+
+
+async def db_action_or_exception_with_tenacity[**P,R](
+        func: AsyncCallable[P,R], *args: P.args, **kwargs: P.kwargs
+) -> R | Exception:
+    try:
+        return await _db_action_with_tenacity_with_raise_exception(func, *args, **kwargs)
+
+    except Exception as err:
+        logger.exception(f"{err.__class__.__name__} - {str(err)}")
+        return err

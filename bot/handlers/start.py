@@ -3,8 +3,9 @@ from telegram.ext import ContextTypes
 
 from bot.renderers.main import show_main_menu
 from bot.renderers.order import show_choose_quantity
-
+from bot.utils.channel_subscription import require_subscription
 from bot.context import clear_context
+from bot.enums import BackDestination
 from bot.states import BotConversationState
 
 
@@ -27,8 +28,9 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         running_users.discard(user_id)
 
 
+@require_subscription(BackDestination.CHOOSE_QUANTITY)
 async def repeat_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Хендлер для кнопки 'Сделать ещё заказ!' (Use Case 10)"""
     clear_context(context)
-    _ = await show_choose_quantity(update, context)
+    _ = await show_choose_quantity(update, context, is_send_new_message=True)
     return BotConversationState.CHOOSE_QUANTITY

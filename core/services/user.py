@@ -1,4 +1,5 @@
 from typing import final
+
 from core.dto.user import UserProfileDTO
 from core.repositories.user import UserRepository
 from core.models import TelegramUser, PromoCode
@@ -8,7 +9,7 @@ class UnregisteredUser(Exception):
     def __init__(self, user_id: int, message: str | None = None):
         if message is None:
             message = f"User with id {user_id} was not registered"
-        self.message = message
+        self.message: str = message
 
         super().__init__(self.message)
 
@@ -41,6 +42,13 @@ class UserService:
             raise UnregisteredUser(telegram_id)
 
         return await self._user_repo.update_active_promo(user, promo)
+
+    async def update_is_active(self, telegram_id: int, new_is_active: bool) -> TelegramUser:
+        user = await self._user_repo.get_by_telegram_id(telegram_id)
+        if user is None:
+            raise UnregisteredUser(telegram_id)
+
+        return await self._user_repo.update_is_active(user, new_is_active)
 
     async def get_profile_data(self, user_id: int) -> UserProfileDTO:
         profile_data = await self._user_repo.get_user_stats(user_id)

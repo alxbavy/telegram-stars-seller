@@ -19,7 +19,11 @@ async def show_profile_page(update: Update, profile_data: UserProfileDTO) -> Mes
         f"🛍 Покупок: {profile_data.purchases_count}\n"
         f"⭐ Звёзд куплено: {profile_data.stars_bought}\n"
     )
-    return await render_screen(update, text, build_profile_kb(), "profile.jpg")
+    return await render_screen(
+        update, text,
+        reply_markup=await build_profile_kb(update.effective_user.id),
+        photo_name="profile.jpg"
+    )
 
 
 @autosave_active_conversation
@@ -41,6 +45,9 @@ async def show_order_history_page(update: Update, history_dto: OrderHistoryPageD
 
     return await render_screen(
         update, text,
-        build_order_history_kb(history_dto.current_page, history_dto.total_pages),
-        "history.jpg"
+        reply_markup=await build_order_history_kb(
+            update.effective_user.id,
+            history_dto.current_page, history_dto.total_pages
+        ),
+        photo_name="history.jpg"
     )

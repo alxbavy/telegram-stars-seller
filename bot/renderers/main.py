@@ -12,7 +12,11 @@ async def show_main_menu(update: Update) -> Message:
         "Звёзды <b>дешевле</b>, чем в самом <b>Telegram</b>!\n"
         "Бери себе или дари друзьям ;)"
     )
-    return await render_screen(update, text, build_main_menu_kb(), "main_menu.jpg")
+    return await render_screen(
+        update, text,
+        reply_markup=await build_main_menu_kb(update.effective_user.id),
+        photo_name="main_menu.jpg"
+    )
 
 
 async def send_empty_username_alert(update: Update) -> Message:

@@ -33,7 +33,6 @@ async def update_order_message_workflow(
         price: str,
         target_username: str,
         pay_url: str,
-        is_gift: bool,
         promo_name: str, promo_discount: str | None,
         *,
         started_at: float
@@ -60,7 +59,7 @@ async def update_order_message_workflow(
         bot, parse_mode,
         user_id, message_id, status, str(transaction_id),
         amount_stars, price,
-        target_username, pay_url, is_gift, promo_name, promo_discount_decimal,
+        target_username, pay_url, promo_name, promo_discount_decimal,
         timeout=timeout
     )
 

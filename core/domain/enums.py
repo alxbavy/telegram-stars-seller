@@ -40,9 +40,7 @@ class Translation:
 
 
 class TransactionStatus(TranslatedEnum):
-    # При добавлении статусов необходимо обновлять FINAL_STATUSES и NOT_FINAL_STATUSES
-    # Статус считается неизвестным, если он не относится к FINAL_STATUSES и NOT_FINAL_STATUSES
-    # NOT_FINAL_STATUSES равносильны PROCESSING
+    # При добавлении статусов необходимо обновлять FINAL_MSG_STATUSES, PROCESSING_STATUSES и STATUS_TRANSITION_MATRIX
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     SENDING = "SENDING"

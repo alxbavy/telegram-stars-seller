@@ -6,7 +6,8 @@ from random import randint
 from typing import cast
 
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpRequest, HttpResponse
+from django.contrib.auth.models import User
+from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.fragment.tasks import update_fragment_tx_task
@@ -18,8 +19,8 @@ from core.integrations.webhook_utils import (
     transform_into_internal_status_or_keep_original
 )
 from core.services.redis_service import (
-    acquire_lock, get_lock_latest_status,
-    save_status_by_key
+    async_save_status_by_key, get_lock_latest_status,
+    async_acquire_lock
 )
 
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _process_webhook(request: HttpRequest, service_name: ServicesNames) -> HttpResponse:
-    http_response = access_granted_or_http_response(request, service_name)
+    http_response = await access_granted_or_http_response(request, service_name)
     if http_response is not None:
         return http_response
 
@@ -67,9 +68,9 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
     transaction_id = cast(str, transaction_id)  # noqa
 
     async def critical_section() -> None:
-        _ = save_status_by_key(service_name, transaction_uuid, str(new_status))
+        _ = await async_save_status_by_key(service_name, transaction_uuid, str(new_status))
         if fragment_tx_id is not None and raw_new_status is not None:
-            _ = save_status_by_key(
+            _ = await async_save_status_by_key(
                 ServicesNames.FRAGMENT__FROM_WEBHOOK, transaction_uuid, raw_new_status
             )
             _ = update_fragment_tx_task.apply_async(
@@ -81,7 +82,7 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
             kwargs={"started_at": None}
         )
 
-    lock = acquire_lock(
+    lock = await async_acquire_lock(
         get_lock_latest_status(service_name, transaction_uuid),
         timeout=45.0,
         blocking_timeout=45.0
@@ -95,7 +96,7 @@ async def _process_webhook(request: HttpRequest, service_name: ServicesNames) ->
 
     finally:
         try:
-            lock.release()
+            await lock.release()
 
         except Exception as exc:
             logger.exception(f"{exc.__class__.__name__} - {str(exc)}")
@@ -134,3 +135,16 @@ async def test_webhook(request: HttpRequest) -> HttpResponse:
     print(json.dumps(headers, indent=2))
 
     return HttpResponse(status=200)
+
+
+@csrf_exempt
+async def health(_: HttpRequest) -> HttpResponse:
+    try:
+        __ = await User.objects.aexists()
+        return JsonResponse({"status": "healthy"}, status=200)
+
+    except Exception as exc:
+        return JsonResponse(
+            {"status": "unhealthy", "detail": str(exc)},
+            status=503
+        )

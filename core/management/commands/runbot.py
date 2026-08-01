@@ -1,53 +1,57 @@
 import os
+# import socket
 import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+# from pathlib import Path
 from typing import final, override
+from collections.abc import Awaitable
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from telegram import Update, BotCommand
 from telegram.ext import (
-    ApplicationBuilder, Application, ExtBot,
-    JobQueue,
-    ContextTypes,
+    ApplicationBuilder,
+    ChatMemberHandler,
     TypeHandler,
-    PicklePersistence, PersistenceInput
+    # PicklePersistence, PersistenceInput
 )
 from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
 from bot.handlers.error import error_handler
+from bot.middlewares.chat import enforce_private_chats_only_or_admin_chat, track_chat_member_update
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
+from bot.utils.type_aliases import DefaultApplication
 
+from core.services.redis_service import close_async_redis_client, listen_redis_for_broadcasts
 from core.ioc import close_container
-
-
-type DefaultApplication = Application[
-    ExtBot[None], ContextTypes.DEFAULT_TYPE,
-    dict[object,object], dict[object,object], dict[object,object],
-    JobQueue[ContextTypes.DEFAULT_TYPE]
-]
 
 
 @final
 class Command(BaseCommand):
     help = "Запуск Telegram бота"
-    # Настройка кастомных тайм-аутов (в секундах)
+    # TODO: проверить работу с сокетами
     request_config = HTTPXRequest(
-        connection_pool_size=20,  # Кол-во открытых соединений
-        connect_timeout=20.0,     # Время на установку соединения
-        read_timeout=25.0,        # Время ожидания ответа от серверов Telegram
-        write_timeout=25.0,       # Время на отправку данных (обычный текст)
-        media_write_timeout=60.0  # Время на загрузку тяжелых файлов/медиа
+        http_version="1.1",
+        connection_pool_size=20,    # Кол-во открытых соединений
+        connect_timeout=20.0,       # Время на установку соединения
+        read_timeout=25.0,          # Время ожидания ответа от серверов Telegram
+        write_timeout=25.0,         # Время на отправку данных (обычный текст)
+        media_write_timeout=60.0,   # Время на загрузку тяжелых файлов/медиа
+        # socket_options=[
+        #     (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10),  # Пинг после 15 сек простоя
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3),  # Интервал повтора пинга
+        #     (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)     # Кол-во попыток
+        # ]
     )
 
     async def post_init(self, application: DefaultApplication) -> None:
         commands = [BotCommand("start", "Сделать новый заказ")]
-        if settings.DEBUG:
+        if settings.DEBUG:  # pyright: ignore[reportAny]
             user_warning = "Режим отладки - если ты обычный пользователь, сообщи об ошибке в тех. поддержку"
             commands.append(BotCommand("balance", user_warning))
             commands.append(BotCommand("balance_debug", user_warning))
@@ -59,15 +63,34 @@ class Command(BaseCommand):
         loop.set_default_executor(ThreadPoolExecutor(max_workers=50))
         self.stdout.write("Бот: ThreadPoolExecutor расширен до 50 потоков.")
 
-    async def post_stop(self, _: DefaultApplication) -> None:
-        self.stdout.write("Bot is stopping, closing dishka container...")
+        self.stdout.write("Бот: создаём прослушиватель публикаций Redis для рассылок...")
+        application.bot_data["stop_redis"] = False
+        application.bot_data["broadcast_listener"] = asyncio.create_task(listen_redis_for_broadcasts(application))
+        self.stdout.write("Бот: прослушиватель публикаций Redis для рассылок создан!")
 
+    async def post_stop(self, application: DefaultApplication) -> None:
+        self.stdout.write("Bot is stopping...")
+
+        self.stdout.write("Бот: останавливаем прослушиватель публикаций Redis для рассылок...")
+        application.bot_data["stop_redis"] = True
+        task = application.bot_data.get("broadcast_listener", None)
+        if task is not None and isinstance(task, Awaitable):
+            await task
+        self.stdout.write("Бот: прослушиватель публикаций Redis для рассылок остановлен!")
+
+        self.stdout.write("Closing DI container in bot...")
         try:
             await close_container()
-            self.stdout.write("Dishka container closed successfully!")
-
+            self.stdout.write("DI container in bot closed successfully!")
         except Exception as err:
-            self.stderr.write(f"Error while closing dishka container in bot: {err}")
+            self.stderr.write(f"Error while closing DI container in bot: {err}")
+
+        self.stdout.write("Closing async redis client in bot...")
+        try:
+            await close_async_redis_client()
+            self.stdout.write("Async redis client in bot closed successfully!")
+        except Exception as err:
+            self.stderr.write(f"Error while closing async redis client in bot: {err}")
 
     @override
     def handle(self, *args: object, **options: object):
@@ -104,7 +127,6 @@ class Command(BaseCommand):
             ApplicationBuilder()  # pyright: ignore[reportUnknownMemberType]
             .token(token)
             .request(self.request_config)
-            .arbitrary_callback_data(True)
             .post_init(self.post_init)
             .post_stop(self.post_stop)
             .build()
@@ -112,10 +134,16 @@ class Command(BaseCommand):
 
         application.add_error_handler(error_handler)  # noqa
 
-        application.add_handler(TypeHandler(Update, register_user_middleware), group=-1)
+        application.add_handler(
+            TypeHandler(Update, enforce_private_chats_only_or_admin_chat), group=-3
+        )
+        application.add_handler(
+            TypeHandler(Update, register_user_middleware), group=-2
+        )
+        application.add_handler(ChatMemberHandler(track_chat_member_update), group=-1)  # noqa
         application.add_handler(get_conversation_handler())
 
-        if settings.DEBUG:
+        if settings.DEBUG:  # pyright: ignore[reportAny]
             handlers = get_debug_handlers()
             for handler in handlers:
                 application.add_handler(handler)

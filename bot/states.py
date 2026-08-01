@@ -1,8 +1,10 @@
-from enum import IntEnum, auto
+from enum import StrEnum, auto
 
 
-# TODO: при реализации персистентности auto() надо заменить на конкретные числа
-class BotConversationState(IntEnum):
+class BotConversationState(StrEnum):
+    # auto() - использует название переменной в нижнем регистре
+    # При персистентности старые названия не должны просто удаляться, а должны как-то обрабатываться
+
     MAIN_MENU = auto()
     SUPPORT = auto()
     PROFILE = auto()
@@ -15,15 +17,12 @@ class BotConversationState(IntEnum):
     CHOOSE_RECIPIENT = auto()
     ENTER_GIFT_USERNAME = auto()
 
-    CHOOSE_PAYMENT_SELF = auto()
-    CHOOSE_PAYMENT_GIFT = auto()
-
+    CHOOSE_PAYMENT = auto()
     ENTER_PROMO = auto()
 
-    ORDER_CONFIRMATION_SELF = auto()
-    ORDER_CONFIRMATION_GIFT = auto()
-
+    ORDER_CONFIRMATION = auto()
     ORDER_CONFIRMED = auto()
 
     LARGE_ORDER_WARNING = auto()
     USERNAME_NOT_FOUND = auto()
+    NOT_SUBSCRIBED = auto()

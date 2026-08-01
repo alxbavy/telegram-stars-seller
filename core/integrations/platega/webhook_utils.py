@@ -13,15 +13,18 @@ from telegram import InputMediaPhoto, Message
 from telegram.ext import ExtBot
 from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
-from bot.keyboards.error import build_support_kb
-from bot.keyboards.order import build_order_confirmed_kb
 from bot.renderers.base import create_media_source
-from bot.renderers.order import get_order_created_text
+from bot.renderers.webhook import get_message_parts_for_status
 
-from core.domain.enums import PROCESSING_STATUSES, TransactionStatus, get_translation
+from core.domain.enums import TransactionStatus
 from core.domain.network_utils import SAFE_TO_RETRY, RetriesEntity, get_timeout_error_or_none
 from core.integrations.fragment.enums import FragmentStatus
-from core.integrations.fragment.errors import FragmentAPINetworkError, FragmentAPITemporaryError, FragmentAPITooManyRequests
+from core.integrations.fragment.errors import (
+    FragmentAPINetworkError,
+    FragmentAPINotEnoughBalanceError,
+    FragmentAPITemporaryError,
+    FragmentAPITooManyRequests
+)
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.schemas import PaymentPayloadDict
 from core.repositories.utils import safe_db_action_async_with_retries_celery
@@ -30,7 +33,7 @@ from core.services.support import SupportService
 from core.services.transaction import TransactionService
 from core.tasks import Task
 from core.ioc import inject
-from core.models import TARGET_SELF, Transaction
+from core.models import Transaction
 
 
 logger = logging.getLogger(__name__)
@@ -272,7 +275,7 @@ async def create_fragment_transaction_if_not_sent_with_retries(
                 kwargs=celery_kwargs
             )
 
-        except FragmentAPITemporaryError as exc:
+        except (FragmentAPITemporaryError, FragmentAPINotEnoughBalanceError) as exc:
             raise celery_task.retry(
                 exc=exc,
                 countdown=60.0 + random.uniform(0.0, 10.0),
@@ -408,92 +411,25 @@ async def safe_notify_user_about_status_with_retries(
         status: str, transaction_id: str,
         amount_stars: int, price: str,
         target_username: str,
-        pay_url: str, is_gift: bool | None = None,
+        pay_url: str,
         promo_name: str = "", promo_discount: Decimal | None = None,
         *,
         timeout: float
 ) -> Message | bool | BadRequest | str:
     kwargs = cast(dict[str, object], celery_task.request.kwargs or {}).copy()  # noqa
 
-    if status == TransactionStatus.SUCCESS:
-        text = (
-            f"😊 <b>Заказ успешно доставлен!</b>\n\n"
-            f"Пополнили — ⭐ {amount_stars} звёзд\n"
-            f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
-            f"🆔 ID заказа — <code>{transaction_id}</code>\n\n"
-            f"Спасибо за покупку! ❤️\n"
-            f"✨ <b>Сделать ещё заказ — /start</b>"
-        )
-        reply_markup = None
-        photo = "delivery_success.jpg"
+    support_url = await safe_get_support_url_with_retries(
+        celery_task, started_at, kwargs, 30.0, transaction_id
+    )
 
-    elif status == TransactionStatus.PENDING:
-        text = get_order_created_text(
-            transaction_id,
-            amount_stars, Decimal(price),
-            target_username,
-            promo_name=promo_name, promo_discount=promo_discount
-        )
-        reply_markup = build_order_confirmed_kb(pay_url)
-        photo = "order_confirmed_gift.jpg" if is_gift else "order_confirmed_self.jpg"
-
-    else:
-        support_url = await safe_get_support_url_with_retries(
-            celery_task, started_at, kwargs, 30.0, transaction_id
-        )
-
-        if status in PROCESSING_STATUSES:
-            text = (
-                f"😊 <b>Заказ обрабатывается...</b>\n\n"
-                f"Пополняем — ⭐{amount_stars}\n"
-                f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
-                f"🆔 ID заказа — <code>{transaction_id}</code>\n\n"
-                f"Обработка может занять до 15 минут. Если ничего не придёт, обратись в тех. поддержку"
-            )
-            reply_markup = build_support_kb(support_url)
-            photo = "delivery_in_process.jpg"
-
-        elif status == TransactionStatus.IN_DOUBT:
-            text = (
-                f"🔍 <b>Проверь чат Telegram</b>\n\n"
-                f"Бот отправил звёзды, но не смог проверить, дошли ли они. "
-                f"Если в течение 5 минут ничего не придёт, обратись в тех. поддержку\n\n"
-                f"Пополняем — ⭐{amount_stars}\n"
-                f"{f'Для кого — 🎁 @{target_username}\n' if target_username != TARGET_SELF else ''}"
-                f"🆔 ID заказа — <code>{transaction_id}</code>"
-            )
-            reply_markup = build_support_kb(support_url)
-            photo = "delivery_in_process.jpg"
-
-        elif status == TransactionStatus.FAILED:
-            text = (
-                f"❌ <b>Произошла ошибка при переводе звёзд!</b>\n\n"
-                f"Обратись в тех. поддержку с ID заказа\n\n"
-                f"🆔 ID заказа: <code>{transaction_id}</code>\n"
-            )
-            reply_markup = build_support_kb(support_url)
-            photo = "delivery_failed.jpg"
-
-        elif status == TransactionStatus.CANCELLED:
-            text = (
-                f"⌛ <b>Время на оплату истекло</b>\n\n"
-                f"❌ Платёж отменён\n"
-                f"🆔 ID заказа: <code>{transaction_id}</code>\n\n"
-                f"Можешь начать новый заказ с помощью /start"
-            )
-            reply_markup = build_support_kb(support_url)
-            photo = "delivery_canceled.jpg"
-
-        else:
-            text = (
-                f"⚠️ <b>Твоему заказу был присвоен статус {get_translation(status) if status else 'НЕИЗВЕСТНО'}</b>\n\n"
-                f"🆔 ID заказа: <code>{transaction_id}</code>"
-            )
-            reply_markup = build_support_kb(support_url)
-            photo = "delivery_unknown.jpg"
-
+    text, reply_markup, photo_name = await get_message_parts_for_status(
+        cast(TransactionStatus, status), amount_stars, Decimal(price),
+        target_username, user_id, transaction_id, pay_url,
+        promo_name, promo_discount,
+        support_url
+    )
     async with bot:
-        with create_media_source(photo) as media:
+        with create_media_source(photo_name) as media:
             return await safe_telegram_action_with_retries(
                 celery_task, started_at,
                 bot.edit_message_media(

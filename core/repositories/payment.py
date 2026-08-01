@@ -16,20 +16,31 @@ class PaymentRepository:
             exchange_rate=await self.model_exchange_rate.aget_solo()
         )
 
-    async def get_payment_method_by_name(
+    async def get_payment_method_by(
             self,
-            payment_method: str,
+            method_api: str,
+            external_method_id: int | None = None,
+            method_name: str | None = None,
             is_check_is_active: bool = True,
-            is_active_value: bool = True,
-            is_select_api: bool = True
+            is_active_value: bool = True
     ) -> PaymentMethod | None:
-        query = self.model_payment_method.objects.filter(name=payment_method)
+        if external_method_id is None and method_name is None:
+            return None
+
+        query = (
+            self.model_payment_method.objects
+            .select_related("api")
+            .filter(api__name=method_api)
+        )
+
+        if external_method_id is not None:
+            query = query.filter(external_id=external_method_id)
+
+        if method_name is not None:
+            query = query.filter(name=method_name)
 
         if is_check_is_active:
             query = query.filter(is_active=is_active_value)
-
-        if is_select_api:
-            query = query.select_related("api")
 
         return await query.afirst()
 

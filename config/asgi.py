@@ -49,13 +49,11 @@ async def application(scope: dict[str, object], receive: AsgiReceive, send: Asgi
                 await send({'type': 'lifespan.startup.complete'})
 
             elif message['type'] == 'lifespan.shutdown':
-                logger.info("Server is stopping, closing dishka container...")
+                logger.info("Server is stopping...")
 
-                from core.ioc import close_container
+                from general.resource_management import close_resources, Where
+                await close_resources(Where("in Django"))
 
-                await close_container()
-
-                logger.info("Dishka container closed successfully!")
                 await send({'type': 'lifespan.shutdown.complete'})
                 return
 

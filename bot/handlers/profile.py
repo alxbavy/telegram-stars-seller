@@ -29,7 +29,7 @@ register = build_async_handlers_register(profile_registry)
 async def _handle_profile_action_history(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        stats_service: FromDishka[StatsService]
+        stats_service: FromDishka[StatsService]  # noqa
 ) -> Literal[BotConversationState.ORDER_HISTORY]:
     history_dto = await db_action_with_tenacity(
         stats_service.get_order_history, update.effective_user.id, page=1
@@ -59,7 +59,7 @@ async def _handle_history_pagination_helper(  # noqa  # pyright: ignore[reportIn
 async def _handle_history_pagination_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        stats_service: FromDishka[StatsService]
+        stats_service: FromDishka[StatsService]  # noqa
 ) -> Literal[BotConversationState.ORDER_HISTORY] | int:
     async with manage_callback_data(update, HistoryPageCallback) as cb_data:
         if isinstance(cb_data, int):

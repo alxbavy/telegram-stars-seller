@@ -31,9 +31,10 @@ from bot.renderers.order import (
 )
 
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
+from bot.utils.channel_subscription import require_subscription
 from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, FixedQuantityCallback, manage_callback_data
 from bot.context import get_view_context
-from bot.enums import RecipientMode
+from bot.enums import BackDestination, RecipientMode
 from bot.states import BotConversationState
 
 from core.integrations.fragment.client import FragmentClient
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.CHOOSE_QUANTITY)
 async def handle_fixed_quantity(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.CHOOSE_RECIPIENT] | int:
@@ -67,6 +69,7 @@ async def handle_fixed_quantity(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.CHOOSE_QUANTITY)
 async def handle_custom_quantity_btn(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.CUSTOM_QUANTITY_INPUT]:
@@ -88,7 +91,7 @@ async def _handle_custom_quantity_input_helper(  # noqa  # pyright: ignore[repor
 async def _handle_custom_quantity_input_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        support_service: FromDishka[SupportService]
+        support_service: FromDishka[SupportService]  # noqa
 ) -> Literal[
     BotConversationState.CUSTOM_QUANTITY_INPUT,
     BotConversationState.LARGE_ORDER_WARNING,
@@ -129,6 +132,7 @@ async def _handle_custom_quantity_input_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
+@require_subscription(BackDestination.CUSTOM_QUANTITY_INPUT)
 async def handle_custom_quantity_input(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[
@@ -149,7 +153,7 @@ async def _handle_recipient_mode_helper(  # noqa  # pyright: ignore[reportIncons
 async def _handle_recipient_mode_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: FromDishka[PromoCodeService]
+        promo_service: FromDishka[PromoCodeService]  # noqa
 ) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME] | int:
     async with manage_callback_data(update, RecipientModeCallback) as cb_data:
         if isinstance(cb_data, int):
@@ -182,6 +186,7 @@ async def _handle_recipient_mode_helper(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.CHOOSE_RECIPIENT)
 async def handle_recipient_mode(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.CHOOSE_PAYMENT, BotConversationState.ENTER_GIFT_USERNAME] | int:
@@ -198,8 +203,8 @@ async def _handle_gift_username_helper(  # noqa  # pyright: ignore[reportInconsi
 async def _handle_gift_username_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        fragment_client: FromDishka[FragmentClient],
-        promo_service: FromDishka[PromoCodeService]
+        fragment_client: FromDishka[FragmentClient],  # noqa
+        promo_service: FromDishka[PromoCodeService]  # noqa
 ) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT]:
     user_id = update.effective_user.id
     if user_id in running_users:
@@ -247,6 +252,7 @@ async def _handle_gift_username_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
+@require_subscription(BackDestination.ENTER_GIFT_USERNAME)
 async def handle_gift_username(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ENTER_GIFT_USERNAME, BotConversationState.CHOOSE_PAYMENT]:
@@ -263,7 +269,7 @@ async def _handle_payment_method_helper(  # noqa  # pyright: ignore[reportIncons
 async def _handle_payment_method_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: FromDishka[PromoCodeService]
+        promo_service: FromDishka[PromoCodeService]  # noqa
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION] | int:
     async with manage_callback_data(update, PaymentMethodCallback) as cb_data:
         if isinstance(cb_data, int):
@@ -294,6 +300,7 @@ async def _handle_payment_method_helper(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.CHOOSE_PAYMENT)
 async def handle_payment_method(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION] | int:
@@ -310,9 +317,9 @@ async def _handle_order_confirmed_helper(  # noqa  # pyright: ignore[reportIncon
 async def _handle_order_confirmed_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        fragment_client: FromDishka[FragmentClient], payment_service: FromDishka[PaymentService],
-        transaction_service: FromDishka[TransactionService], promo_service: FromDishka[PromoCodeService],
-        user_service: FromDishka[UserService], support_service: FromDishka[SupportService]
+        fragment_client: FromDishka[FragmentClient], payment_service: FromDishka[PaymentService],  # noqa
+        transaction_service: FromDishka[TransactionService], promo_service: FromDishka[PromoCodeService],  # noqa
+        user_service: FromDishka[UserService], support_service: FromDishka[SupportService]  # noqa
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:
     ctx = get_view_context(context)
 
@@ -434,6 +441,7 @@ async def _handle_order_confirmed_helper(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.ORDER_CONFIRMATION)
 async def handle_order_confirmed(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ORDER_CONFIRMATION, BotConversationState.ORDER_CONFIRMED]:

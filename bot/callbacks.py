@@ -252,6 +252,12 @@ class BackCallback(BaseCallback):
 
 @final
 @dataclass(frozen=True, slots=True)
+class SubscriptionCallback(BaseCallback):
+    back_destination: BackDestination
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class ProfileMenuCallback(BaseCallback):
     action: ProfileAction
 

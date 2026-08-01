@@ -31,43 +31,43 @@ from core.services.user import UserService
 from core.ioc import inject
 
 
-back_destination_registry: dict[BackDestination, UpdateWithContextHandler[..., BotConversationState]] = {}
+back_destination_registry: dict[BackDestination, UpdateWithContextHandler[[], BotConversationState]] = {}
 register = build_async_handlers_register(back_destination_registry)
 
 
 @register(BackDestination.MAIN_MENU)
-async def _handle_destination_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_destination_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clear_profile_data(context)
     return await start_handler(update, context)
 
 
 @register(BackDestination.CHOOSE_QUANTITY)
-async def _handle_destination_choose_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_destination_choose_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ = await show_choose_quantity(update, context)
     return BotConversationState.CHOOSE_QUANTITY
 
 
 @register(BackDestination.CUSTOM_QUANTITY_INPUT)
-async def _handle_destination_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_destination_custom_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ = await show_custom_quantity_input(update, context)
     return BotConversationState.CUSTOM_QUANTITY_INPUT
 
 
 @register(BackDestination.CHOOSE_RECIPIENT)
-async def _handle_destination_choose_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_destination_choose_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ = await show_choose_recipient(update, context)
     return BotConversationState.CHOOSE_RECIPIENT
 
 
 @register(BackDestination.ENTER_GIFT_USERNAME)
-async def _handle_destination_enter_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_destination_enter_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _ = await show_enter_username(update, context)
     return BotConversationState.ENTER_GIFT_USERNAME
 
 
 @register(BackDestination.CHOOSE_PAYMENT)
 @inject
-async def _handle_destination_choose_payment(
+async def handle_destination_choose_payment(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         promo_service: FromDishka[PromoCodeService]
@@ -83,7 +83,7 @@ async def _handle_destination_choose_payment(
 
 @register(BackDestination.PROFILE)
 @inject
-async def _handle_destination_profile(
+async def handle_destination_profile(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
         user_service: FromDishka[UserService]
@@ -99,7 +99,7 @@ async def _handle_destination_profile(
 
 
 # @register(BackDestination.REFERRALS_LIST)
-# async def _handle_destination_referrals_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# async def handle_destination_referrals_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     # Заглушка для возврата к списку рефералов
 #     # _ = await show_referrals_list(update, context, referrals_dto)
 #     return BotConversationState.REFERRALS_LIST

@@ -25,5 +25,7 @@ class BackDestination(StrEnum):
     CHOOSE_RECIPIENT = "choose_recipient"
     ENTER_GIFT_USERNAME = "enter_gift_username"
     CHOOSE_PAYMENT = "choose_payment"
+    ENTER_PROMO = "enter_promo"
+    ORDER_CONFIRMATION = "order_confirmation"
     PROFILE = "profile"
     REFERRALS_LIST = "referrals_list"

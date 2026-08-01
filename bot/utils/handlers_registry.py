@@ -1,6 +1,7 @@
 from core.domain.type_aliases import AsyncCallable
 
 
+# TODO: переписать регистр для хэндлеров, т.к. искажается целевая функция; можно сделать регистр через наследование
 def build_async_handlers_register[K](registry: dict[K, AsyncCallable[...,...]]):
     """
     Принимает словарь, в который будут регистрироваться функции по переданному ключу.
@@ -31,6 +32,4 @@ def build_async_handlers_register[K](registry: dict[K, AsyncCallable[...,...]]):
             return func
         return decorator_for_handler_input
 
-
     return decorator_for_key_input
-

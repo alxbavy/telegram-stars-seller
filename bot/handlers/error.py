@@ -44,7 +44,7 @@ async def error_handler(  # noqa  # pyright: ignore[reportInconsistentOverload]
 async def error_handler(
         update: object | None, context: ContextTypes.DEFAULT_TYPE,
         *,
-        support_service: FromDishka[SupportService]
+        support_service: FromDishka[SupportService]  # noqa
 ) -> None:
     error = context.error
     error_type = error.__class__.__name__

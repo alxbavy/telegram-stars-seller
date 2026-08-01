@@ -6,6 +6,7 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from bot.enums import BackDestination
 from bot.renderers.promo_code import (
     show_enter_promo,
     show_promo_exhaust_for_global,
@@ -17,6 +18,7 @@ from bot.renderers.promo_code import (
 from bot.states import BotConversationState
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 
+from bot.utils.channel_subscription import require_subscription
 from core.domain.enums import FINAL_MSG_STATUSES
 from core.repositories.utils import db_action_with_tenacity
 from core.services.promo_code import PromoCodeService
@@ -39,7 +41,7 @@ async def _handle_promo_input_request_helper(  # noqa  # pyright: ignore[reportI
 async def _handle_promo_input_request_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: FromDishka[PromoCodeService]
+        promo_service: FromDishka[PromoCodeService]  # noqa
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
@@ -49,6 +51,7 @@ async def _handle_promo_input_request_helper(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.CHOOSE_PAYMENT)
 async def handle_promo_input_request(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ENTER_PROMO]:
@@ -65,7 +68,7 @@ async def _handle_promo_code_cancel_helper(  # noqa  # pyright: ignore[reportInc
 async def _handle_promo_code_cancel_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        user_service: FromDishka[UserService], promo_service: FromDishka[PromoCodeService]
+        user_service: FromDishka[UserService], promo_service: FromDishka[PromoCodeService]  # noqa
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     _ = await db_action_with_tenacity(
         user_service.update_active_promo, update.effective_user.id, None
@@ -81,6 +84,7 @@ async def _handle_promo_code_cancel_helper(
 
 
 @ensure_use_active_conversation_with_callback
+@require_subscription(BackDestination.ENTER_PROMO)
 async def handle_promo_code_cancel(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ENTER_PROMO]:
@@ -97,9 +101,9 @@ async def _handle_enter_promo_helper(  # noqa  # pyright: ignore[reportInconsist
 async def _handle_enter_promo_helper(
         update: Update, context: ContextTypes.DEFAULT_TYPE,
         *,
-        promo_service: FromDishka[PromoCodeService],
-        trans_service: FromDishka[TransactionService],
-        user_service: FromDishka[UserService]
+        promo_service: FromDishka[PromoCodeService],  # noqa
+        trans_service: FromDishka[TransactionService],  # noqa
+        user_service: FromDishka[UserService]  # noqa
 ) -> Literal[BotConversationState.ENTER_PROMO]:
     promo_name = cast(str, update.message.text)  # noqa
     found_promo = await db_action_with_tenacity(
@@ -185,6 +189,7 @@ async def _handle_enter_promo_helper(
 
 
 # Срабатывает на ввод пользователя, поэтому @ensure_use_active_conversation_with_callback не нужен
+@require_subscription(BackDestination.ENTER_PROMO)
 async def handle_enter_promo(
         update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> Literal[BotConversationState.ENTER_PROMO]:

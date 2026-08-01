@@ -1,16 +1,22 @@
 from functools import wraps
+from typing import Literal
 
 from django.conf import settings
 
-from telegram import ChatMember, Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram import ChatMember, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatMemberStatus
 from telegram.error import Forbidden, TelegramError
 
 from tenacity import retry
 
-from bot.renderers.base import send_new_message
+from bot.renderers.base import delete_message, send_new_message
+from bot.utils.active_conversation import autosave_active_conversation
 from bot.utils.type_aliases import UpdateWithContextHandler
+from bot.callbacks import SubscriptionCallback, create_callback
+from bot.context import get_view_context
+from bot.enums import BackDestination
+from bot.states import BotConversationState
 
 from core.domain.tenacity_utils import TelegramRetryConfig
 
@@ -38,22 +44,43 @@ async def is_user_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return False
 
 
-def require_subscription[**P,R](func: UpdateWithContextHandler[P,R]):  # TODO: повесить декоратор везде, где нужно
-    @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args: P.args, **kwargs: P.kwargs) -> R | Message:
-        if await is_user_subscribed(update, context):
-            return await func(update, context, *args, **kwargs)
+def require_subscription(back_destination: BackDestination, /):
+    def decorator[**P](func: UpdateWithContextHandler[P, BotConversationState | int]):
+        @wraps(func)
+        async def wrapper(
+                update: Update, context: ContextTypes.DEFAULT_TYPE,
+                *args: P.args, **kwargs: P.kwargs
+        ) -> BotConversationState | int | Literal[BotConversationState.NOT_SUBSCRIBED]:
+            if await is_user_subscribed(update, context):
+                return await func(update, context, *args, **kwargs)
 
-        keyboard = [
-            [InlineKeyboardButton("🔮 Перейти в канал", url=settings.CHANNEL_LINK)],  # pyright: ignore[reportAny]
-            [InlineKeyboardButton("✅ Я подписался", callback_data="check_sub")]  # TODO: добавить нормальный callback
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+            tg_user = update.effective_user
+            if tg_user is None:
+                raise RuntimeError("Во время проверки подписки на канал отсутствует объект User")
 
-        text =(
-            f"❌ <b>Ошибка! Чтобы пользоваться ботом, подпишись на Telegram-Канал!</b>\n\n"
-            f"Будем всегда держать тебя в курсе! ;)"
-        )
-        return await send_new_message(update, text, reply_markup, photo_name=None)
+            keyboard = [
+                [InlineKeyboardButton(
+                    "🔮 Перейти в канал", url=settings.CHANNEL_LINK  # pyright: ignore[reportAny]
+                )],
+                [InlineKeyboardButton(
+                    "✅ Я подписался(-ась)",
+                    callback_data=await create_callback(tg_user.id, SubscriptionCallback(back_destination))
+                )]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
 
-    return wrapper
+            text =(
+                f"❌ <b>Ошибка! Чтобы пользоваться ботом, подпишись на Telegram-Канал!</b>\n\n"
+                f"Будем всегда держать тебя в курсе! ;)"
+            )
+
+            ctx = get_view_context(context)
+            _ = await delete_message(ctx.active_conversation)
+
+            _ = await (autosave_active_conversation(send_new_message))(
+                update, context,
+                text, reply_markup, photo_name=None
+            )
+            return BotConversationState.NOT_SUBSCRIBED
+        return wrapper
+    return decorator

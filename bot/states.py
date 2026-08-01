@@ -25,3 +25,4 @@ class BotConversationState(StrEnum):
 
     LARGE_ORDER_WARNING = auto()
     USERNAME_NOT_FOUND = auto()
+    NOT_SUBSCRIBED = auto()

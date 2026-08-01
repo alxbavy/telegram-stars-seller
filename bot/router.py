@@ -14,6 +14,7 @@ from bot.handlers.order import (
 from bot.handlers.profile import handle_profile_menu, handle_history_pagination
 from bot.handlers.promo_code import handle_enter_promo, handle_promo_input_request, handle_promo_code_cancel
 from bot.handlers.start import start_handler, repeat_order_callback
+from bot.handlers.subscription import handle_i_subscribed_button
 from bot.callbacks import (
     CancelPromoCodeCallback, RepeatOrderCallback, MainMenuCallback,
     ProfileMenuCallback, HistoryPageCallback,
@@ -21,7 +22,7 @@ from bot.callbacks import (
     RecipientModeCallback,
     PaymentMethodCallback, PromoCodeCallback,
     OrderConfirmedCallback,
-    BackCallback
+    BackCallback, SubscriptionCallback
 )
 from bot.states import BotConversationState
 
@@ -41,6 +42,9 @@ def get_conversation_handler() -> ConversationHandler[ContextTypes.DEFAULT_TYPE]
             CallbackQueryHandler(repeat_order_callback, pattern=RepeatOrderCallback.pattern),
         ],
         states={
+            BotConversationState.NOT_SUBSCRIBED: [
+                CallbackQueryHandler(handle_i_subscribed_button, pattern=SubscriptionCallback.pattern)
+            ],
             BotConversationState.MAIN_MENU: [
                 CallbackQueryHandler(handle_main_menu, pattern=MainMenuCallback.pattern)
             ],

@@ -163,7 +163,7 @@ async def show_payment_methods(
     )
 
 
-def _get_promo_and_price_sentences(price: Decimal, promo_name: str, promo_discount: Decimal | None) -> tuple[str, str]:
+def get_promo_and_price_sentences(price: Decimal, promo_name: str, promo_discount: Decimal | None) -> tuple[str, str]:
     promo_sentence = ""
     promo_remark = ""
 
@@ -191,7 +191,7 @@ async def show_order_confirmation(
         promo_name = active_promo.name
         promo_discount = active_promo.discount
 
-    promo_sentence, price_sentence = _get_promo_and_price_sentences(
+    promo_sentence, price_sentence = get_promo_and_price_sentences(
         price, promo_name, promo_discount
     )
     if target_username:
@@ -236,7 +236,7 @@ def get_order_created_text(
         target_username: str, expires_in: str | None = None,
         promo_name: str = "", promo_discount: Decimal | None = None
 ) -> str:
-    promo_sentence, price_sentence = _get_promo_and_price_sentences(price, promo_name, promo_discount)
+    promo_sentence, price_sentence = get_promo_and_price_sentences(price, promo_name, promo_discount)
     ending = get_ending_for_digit_string(expires_in, WordCase.GENITIVE)
     if target_username and target_username != TARGET_SELF:
         target_username = f"@{target_username.lstrip("@")}"

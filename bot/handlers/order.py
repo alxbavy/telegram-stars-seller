@@ -30,6 +30,7 @@ from bot.renderers.order import (
     show_order_confirmation, edit_order_created_message, edit_order_creating_message
 )
 
+from bot.notifications.admin import notify_admin_about_order_creation
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
 from bot.utils.channel_subscription import require_subscription
 from bot.callbacks import PaymentMethodCallback, RecipientModeCallback, FixedQuantityCallback, manage_callback_data
@@ -332,14 +333,14 @@ async def _handle_order_confirmed_helper(
 
     amount_stars = ctx.order.quantity
     price = ctx.order.price
-    method_id = ctx.order.payment_external_id
+    external_method_id = ctx.order.payment_external_id
     method_api = ctx.order.payment_api
 
     if amount_stars is None:
         raise AttributeError("amount_stars is None во время создания заказа")
     if price is None:
         raise AttributeError("price is None во время создания заказа")
-    if method_id is None:
+    if external_method_id is None:
         raise AttributeError("method_id is None во время создания заказа")
     if method_api is None:
         raise AttributeError("method_api is None во время создания заказа")
@@ -356,7 +357,7 @@ async def _handle_order_confirmed_helper(
         raise KeyboardMethodError("Цена должна быть в формате Decimal")
 
     try:
-        method_id = int(method_id)
+        external_method_id = int(external_method_id)
     except ValueError:
         raise KeyboardMethodError("Внешний ID метода оплаты должен быть целым числом для используемого API")
 
@@ -374,7 +375,7 @@ async def _handle_order_confirmed_helper(
         price=price,
         stars_count=amount_stars,
         payment_api=method_api,
-        method=method_id,
+        method=external_method_id,
         target_username=ctx.order.target_username,
         promo=active_promo
     )
@@ -389,7 +390,7 @@ async def _handle_order_confirmed_helper(
     _ = await db_action_with_tenacity(transaction_service.create_transaction,
         payment_dto.transaction_id,
         parsed_payload,
-        payment_method=f"{method_api} - {method_id}",
+        payment_method=f"{method_api} - {external_method_id}",
         expires_in=payment_dto.expires_in
     )
 
@@ -425,6 +426,19 @@ async def _handle_order_confirmed_helper(
         _ = await db_action_with_tenacity(
             user_service.update_active_promo, update.effective_user.id, None
         )
+
+        buyer_username = update.effective_user.username
+        if buyer_username is None:
+            buyer_username = str(update.effective_user.id)
+
+        _ = context.application.create_task(notify_admin_about_order_creation(  # pyright: ignore[reportUnknownMemberType]
+            context.bot,
+            amount_stars, payment_dto.price,
+            method_api, external_method_id,
+            buyer_username, ctx.order.target_username,
+            active_promo,
+            payment_dto.transaction_id
+        ))
 
         return BotConversationState.ORDER_CONFIRMED
 

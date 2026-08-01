@@ -20,11 +20,12 @@ async def _register_user_middleware_helper(  # noqa  # pyright: ignore[reportInc
 async def _register_user_middleware_helper(
         update: Update,
         *,
-        user_service: FromDishka[UserService]
+        user_service: FromDishka[UserService]  # noqa
 ) -> None:
     tg_user = update.effective_user
+    chat = update.effective_chat
 
-    if not tg_user:
+    if not tg_user or chat is None or chat.type != chat.PRIVATE:
         return
 
     _ = await db_action_with_tenacity(user_service.register_user, tg_user.id, tg_user.username)

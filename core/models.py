@@ -59,6 +59,7 @@ class TelegramUser(models.Model):
 
     telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
     username = models.CharField(max_length=255, blank=True, verbose_name="Username")
+
     active_promo = models.ForeignKey(
         PromoCode,
         on_delete=models.SET_NULL,
@@ -67,6 +68,9 @@ class TelegramUser(models.Model):
         verbose_name="Актив. промокод"
     )
     promo_since = models.DateTimeField(null=True, blank=True, verbose_name="Дата активации промокода")
+
+    is_active = models.BooleanField(default=True, blank=True, verbose_name="Активный пользователь?", help_text="Пользователь неактивен, если у бота нет к нему доступа")
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Последнее обновление")
 
@@ -193,7 +197,8 @@ class PaymentMethod(models.Model):
         max_digits=5,
         decimal_places=2,
         default=Decimal("0.00"),
-        verbose_name="Комиссия (%)"
+        verbose_name="Комиссия %",
+        help_text="Например, 1.00% (не 0.01)"
     )
     is_active = models.BooleanField(default=False, verbose_name="Активен?")
 

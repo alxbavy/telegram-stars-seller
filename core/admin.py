@@ -79,7 +79,9 @@ class TransactionInline(admin.TabularInline, TransactionMetadataMixin):  # pyrig
 @final
 class TelegramUserInline(admin.TabularInline):  # pyright: ignore[reportMissingTypeArgument]
     model: type[TelegramUser] = TelegramUser
-    readonly_fields = ("username", "telegram_id", "promo_since", "created_at", "updated_at")
+    readonly_fields = (
+        "username", "telegram_id", "promo_since", "is_active", "created_at", "updated_at"
+    )
     show_change_link = True
     can_delete = False
     ordering = ("-promo_since",)
@@ -110,14 +112,14 @@ class PromoCodeAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgu
 @admin.register(TelegramUser)
 class TelegramUserAdmin(admin.ModelAdmin):  # pyright: ignore[reportMissingTypeArgument]
     list_display = (
-        "username", "telegram_id", "active_promo", "promo_since", "created_at", "updated_at"
+        "username", "telegram_id", "active_promo", "promo_since", "is_active", "created_at", "updated_at"
     )
     ordering = ("-created_at", )
     search_fields = ("username", "telegram_id", "active_promo__name")
     search_help_text = "Поиск по имени пользователя или ID и имени промокода"
     list_filter = (
         ("created_at", admin.DateFieldListFilter), ("updated_at", admin.DateFieldListFilter),
-        ("promo_since", admin.DateFieldListFilter)
+        ("promo_since", admin.DateFieldListFilter), "is_active"
     )
     if settings.DEBUG:  # pyright: ignore[reportAny]
         readonly_fields = ("promo_since", "created_at", "updated_at")

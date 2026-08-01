@@ -147,6 +147,12 @@ class UserRepository:
         return user
 
     @staticmethod
+    async def update_is_active(user: TelegramUser, new_is_active: bool) -> TelegramUser:
+        user.is_active = new_is_active
+        await user.asave(update_fields=["is_active", "updated_at"])
+        return user
+
+    @staticmethod
     async def delete_active_promo(user: TelegramUser) -> TelegramUser:
         user.active_promo = None
         user.promo_since = None

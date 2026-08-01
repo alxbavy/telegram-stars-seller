@@ -13,6 +13,7 @@ from django.core.management.base import BaseCommand
 from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
+    ChatMemberHandler,
     TypeHandler,
     # PicklePersistence, PersistenceInput
 )
@@ -20,7 +21,7 @@ from telegram.request import HTTPXRequest
 from telegram.warnings import PTBUserWarning
 
 from bot.handlers.error import error_handler
-from bot.middlewares.chat import enforce_private_chats_only_or_admin_chat
+from bot.middlewares.chat import enforce_private_chats_only_or_admin_chat, track_chat_member_update
 from bot.middlewares.user import register_user_middleware
 from bot.router import get_conversation_handler, get_debug_handlers
 from bot.utils.type_aliases import DefaultApplication
@@ -134,11 +135,12 @@ class Command(BaseCommand):
         application.add_error_handler(error_handler)  # noqa
 
         application.add_handler(
-            TypeHandler(Update, enforce_private_chats_only_or_admin_chat), group=-2
+            TypeHandler(Update, enforce_private_chats_only_or_admin_chat), group=-3
         )
         application.add_handler(
-            TypeHandler(Update, register_user_middleware), group=-1
+            TypeHandler(Update, register_user_middleware), group=-2
         )
+        application.add_handler(ChatMemberHandler(track_chat_member_update), group=-1)  # noqa
         application.add_handler(get_conversation_handler())
 
         if settings.DEBUG:  # pyright: ignore[reportAny]

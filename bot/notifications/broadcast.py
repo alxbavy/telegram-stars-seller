@@ -9,11 +9,13 @@ from django.db.models import QuerySet
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, Forbidden
 
 from tenacity import retry
 
 from core.domain.tenacity_utils import TelegramRetryConfig
 from core.domain.type_aliases import AsyncCallable
+from core.repositories.utils import db_action_or_exception_with_tenacity, db_action_with_tenacity
 from core.models import Broadcast, TelegramUser
 
 
@@ -65,11 +67,11 @@ class _BroadcastResult(TypedDict):
 
 
 @retry(**_retry_config)
-async def _retry_action[R](
-        bot_action: AsyncCallable[..., R],
-        kwargs: _PhotoKwargs | _VideoKwargs | _DocumentKwargs | _TextKwargs
+async def _retry_action[**P,R](
+        bot_action: AsyncCallable[P,R],
+        *args: P.args, **kwargs: P.kwargs
 ) -> R:
-    return await bot_action(**kwargs)
+    return await bot_action(*args, **kwargs)
 
 
 def _build_keyboard(
@@ -98,7 +100,7 @@ async def _send_preview_and_get_file_id(
             chat_id=chat_id, parse_mode=_parse_mode,
             text=text, reply_markup=reply_markup, message_thread_id=thread_id
         )
-        _ = await _retry_action(bot.send_message, text_kwargs)
+        _ = await _retry_action(bot.send_message, **text_kwargs)
         return None
 
     mime_type, _ = guess_type(media_path)
@@ -108,7 +110,7 @@ async def _send_preview_and_get_file_id(
                 chat_id=chat_id, parse_mode=_parse_mode,
                 photo=f, caption=text, reply_markup=reply_markup, message_thread_id=thread_id
             )
-            msg = await _retry_action(bot.send_photo, photo_kwargs)
+            msg = await _retry_action(bot.send_photo, **photo_kwargs)
             return msg.photo[-1].file_id
 
         elif mime_type and mime_type.startswith("video"):
@@ -116,7 +118,7 @@ async def _send_preview_and_get_file_id(
                 chat_id=chat_id, parse_mode=_parse_mode,
                 video=f, caption=text, reply_markup=reply_markup, message_thread_id=thread_id
             )
-            msg = await _retry_action(bot.send_video, video_kwargs)
+            msg = await _retry_action(bot.send_video, **video_kwargs)
             return msg.video.file_id
 
         else:
@@ -124,11 +126,11 @@ async def _send_preview_and_get_file_id(
                 chat_id=chat_id, parse_mode=_parse_mode,
                 document=f, caption=text, reply_markup=reply_markup, message_thread_id=thread_id
             )
-            msg = await _retry_action(bot.send_document, document_kwargs)
+            msg = await _retry_action(bot.send_document, **document_kwargs)
             return msg.document.file_id
 
 
-async def process_preview(bot: Bot, broadcast_id: int) -> str:
+async def process_preview(bot: Bot, broadcast_id: int) -> None:
     broadcast = await Broadcast.objects.aget(id=broadcast_id)
 
     broadcast_name = f'"{broadcast.name}"'
@@ -151,13 +153,38 @@ async def process_preview(bot: Bot, broadcast_id: int) -> str:
         broadcast.telegram_file_id = file_id
         broadcast.preview_sent = True
 
-        await broadcast.asave(update_fields=['telegram_file_id', 'preview_sent'])
-
-        return f"broadcast {broadcast_name} preview send success"
+        await db_action_with_tenacity(broadcast.asave, update_fields=["telegram_file_id", "preview_sent"])
+        logger.info(f"broadcast {broadcast_name} preview send success")
 
     except Exception as exc:
         logger.exception(f"Ошибка отправки предпросмотра рассылки {broadcast_name}: {exc}", exc_info=False)
-        return f"broadcast {broadcast_name} preview send fail"
+
+
+async def _send_message_with_retries[**P,R](
+        bot_action: AsyncCallable[P,R], broadcast_name: str | int, user: TelegramUser,
+        /,
+        *args: P.args, **kwargs: P.kwargs
+) -> bool:
+    try:
+        _ = await _retry_action(bot_action, *args, **kwargs)
+        return True
+
+    except Exception as exc:
+        logger.exception(
+            f"Не удалось отправить {broadcast_name} юзеру {user.telegram_id}: {exc}", exc_info=False
+        )
+        if isinstance(exc, BadRequest) and "not found" in str(exc) or isinstance(exc, Forbidden):
+            user.is_active = False
+            result = await db_action_or_exception_with_tenacity(
+                user.asave, update_fields=["is_active", "updated_at"]
+            )
+            if isinstance(result, Exception):
+                logger.exception(str(result), exc_info=False)
+
+    finally:
+        await asyncio.sleep(0.05)
+
+    return False
 
 
 async def _mass_send_photo(
@@ -165,23 +192,17 @@ async def _mass_send_photo(
         users_qs: QuerySet[TelegramUser],
         file_id: str, text: str, reply_markup: InlineKeyboardMarkup | None
 ) -> _BroadcastResult:
-    success = 0
-    failed = 0
+    success = failed = 0
 
     async for user in users_qs:
-        try:
-            photo_kwargs = _PhotoKwargs(
-                chat_id=user.telegram_id, parse_mode=_parse_mode,
-                photo=file_id, caption=text, reply_markup=reply_markup
-            )
-            _ = await _retry_action(bot.send_photo, photo_kwargs)
+        photo_kwargs = _PhotoKwargs(
+            chat_id=user.telegram_id, parse_mode=_parse_mode,
+            photo=file_id, caption=text, reply_markup=reply_markup
+        )
+        is_success = await _send_message_with_retries(bot.send_photo, broadcast_name, user, **photo_kwargs)
+        if is_success:
             success += 1
-            await asyncio.sleep(0.05)
-
-        except Exception as exc:
-            logger.exception(
-                f"Не удалось отправить {broadcast_name} юзеру {user.telegram_id}: {exc}", exc_info=False
-            )
+        else:
             failed += 1
 
     return _BroadcastResult(success=success, failed=failed)
@@ -192,23 +213,17 @@ async def _mass_send_video(
         users_qs: QuerySet[TelegramUser],
         file_id: str, text: str, reply_markup: InlineKeyboardMarkup | None
 ) -> _BroadcastResult:
-    success = 0
-    failed = 0
+    success = failed = 0
 
     async for user in users_qs:
-        try:
-            video_kwargs = _VideoKwargs(
-                chat_id=user.telegram_id, parse_mode=_parse_mode,
-                video=file_id, caption=text, reply_markup=reply_markup
-            )
-            _ = await _retry_action(bot.send_video, video_kwargs)
+        video_kwargs = _VideoKwargs(
+            chat_id=user.telegram_id, parse_mode=_parse_mode,
+            video=file_id, caption=text, reply_markup=reply_markup
+        )
+        is_success = await _send_message_with_retries(bot.send_video, broadcast_name, user, **video_kwargs)
+        if is_success:
             success += 1
-            await asyncio.sleep(0.05)
-
-        except Exception as exc:
-            logger.exception(
-                f"Не удалось отправить {broadcast_name} юзеру {user.telegram_id}: {exc}", exc_info=False
-            )
+        else:
             failed += 1
 
     return _BroadcastResult(success=success, failed=failed)
@@ -219,23 +234,17 @@ async def _mass_send_document(
         users_qs: QuerySet[TelegramUser],
         file_id: str, text: str, reply_markup: InlineKeyboardMarkup | None
 ) -> _BroadcastResult:
-    success = 0
-    failed = 0
+    success = failed = 0
 
     async for user in users_qs:
-        try:
-            document_kwargs = _DocumentKwargs(
-                chat_id=user.telegram_id, parse_mode=_parse_mode,
-                document=file_id, caption=text, reply_markup=reply_markup
-            )
-            _ = await _retry_action(bot.send_document, document_kwargs)
+        document_kwargs = _DocumentKwargs(
+            chat_id=user.telegram_id, parse_mode=_parse_mode,
+            document=file_id, caption=text, reply_markup=reply_markup
+        )
+        is_success = await _send_message_with_retries(bot.send_document, broadcast_name, user, **document_kwargs)
+        if is_success:
             success += 1
-            await asyncio.sleep(0.05)
-
-        except Exception as exc:
-            logger.exception(
-                f"Не удалось отправить {broadcast_name} юзеру {user.telegram_id}: {exc}", exc_info=False
-            )
+        else:
             failed += 1
 
     return _BroadcastResult(success=success, failed=failed)
@@ -246,23 +255,17 @@ async def _mass_send_text(
         users_qs: QuerySet[TelegramUser],
         text: str, reply_markup: InlineKeyboardMarkup | None
 ) -> _BroadcastResult:
-    success = 0
-    failed = 0
+    success = failed = 0
 
     async for user in users_qs:
-        try:
-            text_kwargs = _TextKwargs(
-                chat_id=user.telegram_id, parse_mode=_parse_mode,
-                text=text, reply_markup=reply_markup
-            )
-            _ = await _retry_action(bot.send_message, text_kwargs)
+        text_kwargs = _TextKwargs(
+            chat_id=user.telegram_id, parse_mode=_parse_mode,
+            text=text, reply_markup=reply_markup
+        )
+        is_success = await _send_message_with_retries(bot.send_message, broadcast_name, user, **text_kwargs)
+        if is_success:
             success += 1
-            await asyncio.sleep(0.05)
-
-        except Exception as exc:
-            logger.exception(
-                f"Не удалось отправить {broadcast_name} юзеру {user.telegram_id}: {exc}", exc_info=False
-            )
+        else:
             failed += 1
 
     return _BroadcastResult(success=success, failed=failed)
@@ -279,10 +282,10 @@ async def _mass_send(
     if file_id and media_path:
         mime_type, _ = guess_type(media_path)
 
-        if mime_type and mime_type.startswith('image'):
+        if mime_type and mime_type.startswith("image"):
             return await _mass_send_photo(bot, broadcast_name, users_qs, file_id, text, reply_markup)
 
-        elif mime_type and mime_type.startswith('video'):
+        elif mime_type and mime_type.startswith("video"):
             return await _mass_send_video(bot, broadcast_name, users_qs, file_id, text, reply_markup)
 
         else:
@@ -291,7 +294,7 @@ async def _mass_send(
     return await _mass_send_text(bot, broadcast_name, users_qs, text, reply_markup)
 
 
-async def process_broadcast(bot: Bot, broadcast_id: int) -> str:
+async def process_broadcast(bot: Bot, broadcast_id: int) -> None:
     broadcast = await Broadcast.objects.aget(id=broadcast_id)
 
     broadcast_name = f'"{broadcast.name}"'
@@ -301,18 +304,23 @@ async def process_broadcast(bot: Bot, broadcast_id: int) -> str:
     reply_markup = _build_keyboard(broadcast.button_texts, broadcast.button_urls)
     media_path = broadcast.media.path if broadcast.media else None
 
-    users_qs = TelegramUser.objects.all()
+    users_qs = TelegramUser.objects.filter(is_active=True)
 
-    broadcast_result = await _mass_send(
-        bot=bot, broadcast_name=broadcast_name,
-        users_qs=users_qs,
-        text=broadcast.text,
-        file_id=broadcast.telegram_file_id,
-        media_path=media_path,
-        reply_markup=reply_markup
-    )
+    try:
+        broadcast_result = await _mass_send(
+            bot=bot, broadcast_name=broadcast_name,
+            users_qs=users_qs,
+            text=broadcast.text,
+            file_id=broadcast.telegram_file_id,
+            media_path=media_path,
+            reply_markup=reply_markup
+        )
 
-    broadcast.is_sent = True
-    await broadcast.asave(update_fields=['is_sent'])
+        broadcast.is_sent = True
+        await db_action_with_tenacity(broadcast.asave, update_fields=["is_sent"])
 
-    return f"mass broadcast {broadcast_name} -> {broadcast_result}"
+        logger.info(f"mass broadcast {broadcast_name} -> {broadcast_result}")
+
+    except Exception as exc:
+        logger.exception(f"Ошибка отправки массовой рассылки {broadcast_name}: {exc}", exc_info=False)
+

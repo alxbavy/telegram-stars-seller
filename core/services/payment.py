@@ -3,20 +3,23 @@ import logging
 from decimal import Decimal
 from typing import final, overload
 
+from core.domain.enums import FINAL_MSG_STATUSES
 from core.dto.payment import PaymentDTO, PaymentMethodDTO
+
+from core.integrations.fragment.client import FragmentClient
 from core.integrations.fragment.schemas import SendStarsResponse
 from core.integrations.platega.client import PlategaClient
 from core.integrations.platega.schemas import PaymentPayloadDict
-from core.models import PromoCode, Transaction, TARGET_SELF
+
 from core.repositories.transaction import TransactionRepository
 from core.repositories.user import UserRepository
 from core.repositories.payment import PaymentRepository
-
-from core.domain.enums import FINAL_MSG_STATUSES
 from core.repositories.utils import db_action_with_tenacity
+
 from core.services.star_price import StarService
-from core.integrations.fragment.client import FragmentClient
 from core.services.user import UnregisteredUser
+
+from core.models import PaymentMethod, PromoCode, Transaction, TARGET_SELF
 
 
 logger = logging.getLogger(__name__)
@@ -63,6 +66,9 @@ class PaymentService:
             )
             for method in await self._payment_repo.get_many_by()
         )
+
+    async def get_payment_method(self, method_api: str, external_method_id: int) -> PaymentMethod | None:
+        return await self._payment_repo.get_payment_method_by(method_api, external_method_id, is_check_is_active=False)
 
     async def create_payment(
             self,

@@ -21,6 +21,7 @@ class OrderDraft:
     payment_method: str | None = None
     payment_external_id: str | None = None
     payment_api: str | None = None
+    is_used_promo_code: bool = False
     price: Annotated[str, Decimal] | None = None
     checkout_transaction_id: str | None = None
     checkout_url: str | None = None

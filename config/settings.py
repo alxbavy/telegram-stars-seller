@@ -30,6 +30,7 @@ env = environ.Env(
     USE_SSL=(bool, True),
     ALLOWED_HOSTS=(list, []),
     CELERY_BROKER_URL=(str, 'redis://localhost:6379/0'),
+    NOTIFY_ABOUT_ORDERS=(bool, True),
     SUPPORT_URL=(str, 'https://google.com/'),
     FEEDBACK_URL=(str, 'https://google.com/')
 )
@@ -52,6 +53,7 @@ TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN')
 ADMIN_CHAT_ID = env('ADMIN_CHAT_ID', cast=int)
 ADMIN_BROADCAST_TOPIC_ID = env('ADMIN_BROADCAST_TOPIC_ID', cast=int)
 ADMIN_ORDERS_TOPIC_ID = env('ADMIN_ORDERS_TOPIC_ID', cast=int)
+NOTIFY_ABOUT_ORDERS = env('NOTIFY_ABOUT_ORDERS')
 CHANNEL_ID = env('CHANNEL_ID', cast=int)
 CHANNEL_LINK = env('CHANNEL_LINK')
 

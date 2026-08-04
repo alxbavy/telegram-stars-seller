@@ -6,7 +6,6 @@ from dishka import FromDishka
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.enums import BackDestination
 from bot.renderers.promo_code import (
     show_enter_promo,
     show_promo_exhaust_for_global,
@@ -15,10 +14,12 @@ from bot.renderers.promo_code import (
     show_promo_exhaust_for_account, show_promo_is_processing,
     show_promo_success
 )
-from bot.states import BotConversationState
 from bot.utils.active_conversation import ensure_use_active_conversation_with_callback
-
 from bot.utils.channel_subscription import require_subscription
+from bot.context import get_view_context
+from bot.enums import BackDestination
+from bot.states import BotConversationState
+
 from core.domain.enums import FINAL_MSG_STATUSES
 from core.repositories.utils import db_action_with_tenacity
 from core.services.promo_code import PromoCodeService
@@ -77,6 +78,9 @@ async def _handle_promo_code_cancel_helper(
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
+    if active_promo is None:
+        ctx = get_view_context(context)
+        ctx.order.is_used_promo_code = False
 
     _ = await show_enter_promo(update, context, active_promo)
 
@@ -168,9 +172,12 @@ async def _handle_enter_promo_helper(
 
             usage_left_account = min(usage_left_account, found_promo.usage_global - usage_global)
 
-        _ = await db_action_with_tenacity(
+        telegram_user = await db_action_with_tenacity(
             user_service.update_active_promo, update.effective_user.id, found_promo
         )
+        if telegram_user.active_promo is not None:
+            ctx = get_view_context(context)
+            ctx.order.is_used_promo_code = True
 
         _ = await show_promo_success(
             update, context,

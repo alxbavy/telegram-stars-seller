@@ -1,5 +1,5 @@
 import os
-# import socket
+import socket
 import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -33,7 +33,7 @@ from core.ioc import close_container
 @final
 class Command(BaseCommand):
     help = "Запуск Telegram бота"
-    # TODO: проверить работу с сокетами
+
     request_config = HTTPXRequest(
         http_version="1.1",
         connection_pool_size=20,    # Кол-во открытых соединений
@@ -41,12 +41,12 @@ class Command(BaseCommand):
         read_timeout=25.0,          # Время ожидания ответа от серверов Telegram
         write_timeout=25.0,         # Время на отправку данных (обычный текст)
         media_write_timeout=60.0,   # Время на загрузку тяжелых файлов/медиа
-        # socket_options=[
-        #     (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
-        #     (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10),  # Пинг после 15 сек простоя
-        #     (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3),  # Интервал повтора пинга
-        #     (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)     # Кол-во попыток
-        # ]
+        socket_options=[
+            (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+            (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10),  # Пинг после 10 сек простоя (больше 10 из-за beget нельзя)
+            (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3),  # Интервал повтора пинга
+            (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)  # Кол-во попыток
+        ]
     )
 
     async def post_init(self, application: DefaultApplication) -> None:
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         # будет сохранено по его id, и конкретно для него будет изменяться состояние, т.е. можно будет иметь несколько
         # Conversation со своими состояниями; в нашем случае нельзя использовать per_message=True, т.к. иногда
         # начальное сообщение от Conversation необходимо удалить и сделать новое - в таком случае id не обновится
-        # для хэндлера)
+        # для хэндлера
         warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
         self.stdout.write("Бот запускается...")

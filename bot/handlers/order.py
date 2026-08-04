@@ -7,8 +7,12 @@ from typing import Literal, cast, overload
 
 from dishka import FromDishka
 
+from httpx import ConnectTimeout, ReadTimeout
+
 from telegram import Update, Message
 from telegram.ext import ContextTypes, ConversationHandler
+
+from django.conf import settings
 
 from bot.handlers.start import running_users
 
@@ -292,6 +296,8 @@ async def _handle_payment_method_helper(
         active_promo = await db_action_with_tenacity(
             promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
         )
+        if active_promo is None:
+            ctx.order.is_used_promo_code = False
 
         _ = await show_order_confirmation(
             update, context,
@@ -364,21 +370,35 @@ async def _handle_order_confirmed_helper(
     active_promo = await db_action_with_tenacity(
         promo_service.get_active_promo_for_telegram_user_id, update.effective_user.id
     )
+    if active_promo is None and ctx.order.is_used_promo_code:
+        _ = await update.callback_query.answer(
+            text="Был активирован промокод, но произошла автоматическая деактивация. Активируй промокод снова",
+            show_alert=True
+        )
+        return BotConversationState.ORDER_CONFIRMATION
 
     order_msg = update.effective_message
     if order_msg is None:
         raise RuntimeError("По какой-то причине сообщение заказа отсутствует при создании заказа")
 
-    payment_dto, parsed_payload = await db_action_with_tenacity(payment_service.create_payment,
-        user_id=update.effective_user.id,
-        message_id=order_msg.message_id,
-        price=price,
-        stars_count=amount_stars,
-        payment_api=method_api,
-        method=external_method_id,
-        target_username=ctx.order.target_username,
-        promo=active_promo
-    )
+    try:
+        payment_dto, parsed_payload = await db_action_with_tenacity(payment_service.create_payment,
+            user_id=update.effective_user.id,
+            message_id=order_msg.message_id,
+            price=price,
+            stars_count=amount_stars,
+            payment_api=method_api,
+            method=external_method_id,
+            target_username=ctx.order.target_username,
+            promo=active_promo
+        )
+
+    except (ConnectTimeout, ReadTimeout):
+        _ = await update.callback_query.answer(
+            text="В данный момент у платёжной системы наблюдаются сетевые проблемы. Попробуй снова через 5 минут",
+            show_alert=True
+        )
+        return BotConversationState.ORDER_CONFIRMATION
 
     pay_url = payment_dto.pay_url
     if pay_url is None:
@@ -431,14 +451,15 @@ async def _handle_order_confirmed_helper(
         if buyer_username is None:
             buyer_username = str(update.effective_user.id)
 
-        _ = context.application.create_task(notify_admin_about_order_creation(  # pyright: ignore[reportUnknownMemberType]
-            context.bot,
-            amount_stars, payment_dto.price,
-            method_api, external_method_id,
-            buyer_username, ctx.order.target_username,
-            active_promo,
-            payment_dto.transaction_id
-        ))
+        if settings.NOTIFY_ABOUT_ORDERS:  # pyright: ignore[reportAny]
+            _ = context.application.create_task(notify_admin_about_order_creation(  # pyright: ignore[reportUnknownMemberType]
+                context.bot,
+                amount_stars, payment_dto.price,
+                method_api, external_method_id,
+                buyer_username, ctx.order.target_username,
+                active_promo,
+                payment_dto.transaction_id
+            ))
 
         return BotConversationState.ORDER_CONFIRMED
 

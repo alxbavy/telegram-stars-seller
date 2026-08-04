@@ -28,10 +28,11 @@ from bot.states import BotConversationState
 
 
 async def _bot_is_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    busy_message = "Бот обрабатывает предыдущее действие, подожди немного..."
     if cb_query := update.callback_query:
-        _ = await cb_query.answer("Бот занят, подожди немного...", show_alert=True)
+        _ = await cb_query.answer(text=busy_message, show_alert=True)
     else:
-        _ = await context.bot.send_message(chat_id=update.effective_chat.id, text="Бот занят, подожди немного...")
+        _ = await context.bot.send_message(chat_id=update.effective_chat.id, text=busy_message)
         await asyncio.sleep(3)
 
 
